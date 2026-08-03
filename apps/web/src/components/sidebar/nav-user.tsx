@@ -1,7 +1,7 @@
 'use client';
 
 import { useCurrentSubscription } from '@/api/subscription';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -76,7 +76,6 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src="/avatars/shadcn.jpg" alt={fullName} />
                 <AvatarFallback className="rounded-lg">
                   {user.firstName[0].toUpperCase()}
                   {user.lastName[0].toUpperCase()}
@@ -98,7 +97,6 @@ export function NavUser() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src="/avatars/shadcn.jpg" alt={fullName} />
                   <AvatarFallback className="rounded-lg">
                     {user.firstName[0].toUpperCase()}
                     {user.lastName[0].toUpperCase()}

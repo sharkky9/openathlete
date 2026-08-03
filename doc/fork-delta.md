@@ -117,3 +117,24 @@ clean.
 
 **Upgrade test:** none; verify required check names in the ruleset still match workflow job names
 after an upgrade renames any upstream job.
+## Sidebar avatar no longer requests the shadcn demo asset
+
+**Reason:** `NavUser` rendered `AvatarImage src="/avatars/shadcn.jpg"` in two places. That asset does
+not exist in the build, so every page load issued a 404 (network noise and error-monitoring noise).
+The user model carries no avatar field, so there is nothing to point the image at.
+
+**Implementation:** `apps/web/src/components/sidebar/nav-user.tsx` — the two `AvatarImage` elements
+and the now-unused import are removed; `AvatarFallback` (the user's initials) renders
+unconditionally. No schema change, no new field, no upload flow.
+
+**Upstream modifications:** `apps/web/src/components/sidebar/nav-user.tsx` (2 removed elements,
+1 import change).
+
+**Upstream candidate:** yes — a plain bug fix with no fork-specific behaviour.
+
+**Removal condition:** upstream removes the hardcoded demo avatar, or adds a real avatar field to
+the user model and wires it up here.
+
+**Upgrade test:** load any authenticated page and confirm
+`performance.getEntriesByType('resource')` contains no `/avatars/shadcn.jpg` entry while the
+initials still render in the sidebar and in the user dropdown.
