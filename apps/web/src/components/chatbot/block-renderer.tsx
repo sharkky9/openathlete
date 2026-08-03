@@ -1,4 +1,6 @@
 import { Loader } from '@/components/ui/loader';
+import { getLocale } from '@/paraglide/runtime';
+import { getDateLocale } from '@/utils/locales';
 import { cn } from '@/utils/shadcn';
 import { getToolMessage } from '@/utils/tool-messages';
 import {
@@ -414,7 +416,7 @@ function ActivityListBlock({ block }: { block: AgentMessageBlock }) {
                     {activity.startDate && (
                       <span className="text-xs">
                         {new Date(activity.startDate).toLocaleDateString(
-                          'fr-FR',
+                          getDateLocale(getLocale()),
                         )}
                       </span>
                     )}
@@ -493,7 +495,11 @@ function ActivityCreatedBlock({ block }: { block: AgentMessageBlock }) {
         {activity.startDate && (
           <div className="text-sm">
             <span className="text-muted-foreground">Date: </span>
-            <span>{new Date(activity.startDate).toLocaleString('fr-FR')}</span>
+            <span>
+              {new Date(activity.startDate).toLocaleString(
+                getDateLocale(getLocale()),
+              )}
+            </span>
           </div>
         )}
 

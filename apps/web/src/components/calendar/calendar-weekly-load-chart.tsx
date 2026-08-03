@@ -12,8 +12,9 @@ import {
 } from '@/components/ui/chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import { m } from '@/paraglide/messages';
+import { getLocale } from '@/paraglide/runtime';
+import { getDateFnsLocale } from '@/utils/locales';
 import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { useMemo } from 'react';
 import {
   Area,
@@ -54,6 +55,7 @@ export function CalendarWeeklyLoadChart({
 }: CalendarWeeklyLoadChartProps) {
   const targetMonth = displayedMonth.getMonth();
   const targetYear = displayedMonth.getFullYear();
+  const dateFnsLocale = getDateFnsLocale(getLocale());
 
   const chartData = useMemo<ChartWeekRow[]>(() => {
     if (!weeks?.length) {
@@ -91,11 +93,9 @@ export function CalendarWeeklyLoadChart({
           0;
 
         const weekEnd = getWeekEnd(weekStart);
-        const label = `${format(weekStart, 'dd MMM', { locale: fr })} → ${format(
-          weekEnd,
-          'dd MMM',
-          { locale: fr },
-        )}`;
+        const label = `${format(weekStart, 'dd MMM', {
+          locale: dateFnsLocale,
+        })} → ${format(weekEnd, 'dd MMM', { locale: dateFnsLocale })}`;
 
         return {
           weekKey: key,
@@ -107,7 +107,7 @@ export function CalendarWeeklyLoadChart({
         };
       })
       .filter((week): week is ChartWeekRow => Boolean(week));
-  }, [weeks, weeklyLoadSummary, targetMonth, targetYear]);
+  }, [weeks, weeklyLoadSummary, targetMonth, targetYear, dateFnsLocale]);
 
   if (!hasScheduledActivities || !weeks?.length) {
     return null;

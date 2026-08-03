@@ -10,7 +10,9 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { m } from '@/paraglide/messages';
+import { getLocale } from '@/paraglide/runtime';
 import { getPath } from '@/routes/paths';
+import { getDateLocale } from '@/utils/locales';
 import { Calendar } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -221,9 +223,9 @@ export function CoachDashboardView() {
                         <div className="px-2 h-[57px] flex items-center justify-center text-muted-foreground border-b group-hover:bg-muted/40 bg-background">
                           <span className="text-sm">
                             {row.lastActivityAt
-                              ? new Date(
-                                  row.lastActivityAt,
-                                ).toLocaleDateString()
+                              ? new Date(row.lastActivityAt).toLocaleDateString(
+                                  getDateLocale(getLocale()),
+                                )
                               : '-'}
                           </span>
                         </div>
