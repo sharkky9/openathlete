@@ -100,7 +100,8 @@ Useful techniques:
   first shipped event is still `Starting Nest application...` — boot logs are easy to lose there.
 
 Ready-made probes live in `helpers/` next to this file (run with node 22 after `pnpm api run build`;
-they resolve `apps/api/dist` relative to the repo, override with `OA_API_DIST`):
+they resolve `apps/api/dist/common/logging` relative to the repo, override that full path with
+`OA_API_DIST`):
 
 | helper | what it proves |
 |---|---|
