@@ -14,38 +14,44 @@ import { metricKeys } from './metric.keys';
 export const useGetMetricsQuery = (
   type?: METRIC_TYPE,
   athleteId?: number,
-  opt?: QueryOptions<Awaited<ReturnType<typeof MetricAPI.getMetrics>>>,
+  opt?: QueryOptions<Awaited<ReturnType<typeof MetricAPI.getMetrics>>> & {
+    enabled?: boolean;
+  },
 ) => {
   return useQuery({
     ...opt,
     queryKey: [metricKeys.getMetrics, type, athleteId],
     queryFn: () => MetricAPI.getMetrics(type, athleteId),
-    enabled: athleteId !== undefined,
+    enabled: (opt?.enabled ?? true) && athleteId !== undefined,
   });
 };
 
 export const useGetLatestMetricsQuery = (
   athleteId?: number,
-  opt?: QueryOptions<Awaited<ReturnType<typeof MetricAPI.getLatestMetrics>>>,
+  opt?: QueryOptions<Awaited<ReturnType<typeof MetricAPI.getLatestMetrics>>> & {
+    enabled?: boolean;
+  },
 ) => {
   return useQuery({
     ...opt,
     queryKey: [metricKeys.getLatestMetrics, athleteId],
     queryFn: () => MetricAPI.getLatestMetrics(athleteId),
-    enabled: athleteId !== undefined,
+    enabled: (opt?.enabled ?? true) && athleteId !== undefined,
   });
 };
 
 export const useGetMetricHistoryQuery = (
   type: METRIC_TYPE,
   athleteId?: number,
-  opt?: QueryOptions<Awaited<ReturnType<typeof MetricAPI.getMetricHistory>>>,
+  opt?: QueryOptions<Awaited<ReturnType<typeof MetricAPI.getMetricHistory>>> & {
+    enabled?: boolean;
+  },
 ) => {
   return useQuery({
     ...opt,
     queryKey: [metricKeys.getMetricHistory, type, athleteId],
     queryFn: () => MetricAPI.getMetricHistory(type, athleteId),
-    enabled: athleteId !== undefined,
+    enabled: (opt?.enabled ?? true) && athleteId !== undefined,
   });
 };
 
@@ -58,7 +64,6 @@ export const useCalculateMetricQuery = (
     ...opt,
     queryKey: [metricKeys.calculateMetric, type, athleteId],
     queryFn: () => MetricAPI.calculateMetric(type, athleteId),
-    enabled: athleteId !== undefined,
   });
 };
 

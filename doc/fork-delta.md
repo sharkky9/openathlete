@@ -211,9 +211,11 @@ because those handlers parse the query parameter with a non-optional `ParseIntPi
 successfully after the athlete resolved. Double load on those endpoints and a stream of false `400`s
 in error monitoring.
 
-**Implementation:** `enabled: athleteId !== undefined` on the athlete-scoped queries in
-`apps/web/src/api/metric/metric.hooks.ts` and `apps/web/src/api/training-load/training-load.hooks.ts`
-(their query keys already contain `athleteId`, so they run as soon as it arrives), and
+**Implementation:** `enabled: (opt?.enabled ?? true) && athleteId !== undefined` on the queries whose
+route requires the parameter, in `apps/web/src/api/metric/metric.hooks.ts` and
+`apps/web/src/api/training-load/training-load.hooks.ts` (their query keys already contain
+`athleteId`, so they run as soon as it arrives; `useCalculateMetricQuery` is left alone because that
+route parses `athleteId` manually and falls back to the caller's own athlete), and
 `apps/web/src/views/dashboard/calendar-view.tsx` only mounts the dashboard header once the athlete
 is known, so the header shows its skeletons instead of an empty state while the athlete loads.
 
