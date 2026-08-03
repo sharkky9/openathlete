@@ -367,9 +367,13 @@ handling the auth module uses (`apps/api/src/modules/auth/services/user.service.
 `DEMO_EMAIL`/`DEMO_PASSWORD`/`SEED_YEAR`/`SEED_MONTH` from the environment, uses the client's
 camelCase field names, makes each `externalId` unique per athlete, and marks the seeded users
 `onboardingCompleted` so a demo login lands on the seeded calendar rather than the onboarding wizard.
-Because it creates login-able accounts with a known default password, the guard fails closed: it runs
-only when `ENV` is explicitly `development` or `test`, and refuses an unset/empty `ENV`, `production`,
-or anything else (staging, preview, a shared or mislabelled database) — not just `ENV=production`.
+Because it creates login-able accounts with a known default password, it seeds only when `ENV` is
+explicitly `development` or `test`. For any other `ENV` (unset/empty, `production`, staging, preview,
+a shared or mislabelled database) it **skips cleanly and exits 0** rather than throwing — the seed is
+registered as the Prisma seed hook (`prisma.config.ts` -> `migrations.seed`), so it also fires on
+`prisma migrate dev`/`reset` (`db:migrate`/`db:reset`); throwing would break that documented setup
+command, since `ENV` is not part of `libs/database`'s own env. `migrate deploy` (the Railway image
+path) never invokes the hook. `libs/database/.env.example` documents the optional `ENV`, and
 `libs/database/package.json` gains an `argon2` dependency. The Prisma seed hook is
 registered as `migrations.seed` in `libs/database/prisma.config.ts` (not the `prisma` block in
 `package.json`): a `prisma.config.ts` is present, and under Prisma 6 the config file takes precedence,

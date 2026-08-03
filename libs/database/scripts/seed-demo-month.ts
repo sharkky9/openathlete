@@ -567,21 +567,25 @@ async function upsertCoachedAthlete(
   return athlete;
 }
 
-async function seedAll() {
+async function seedAll(): Promise<boolean> {
   // This seed creates login-able accounts with a known default password, so it
-  // must never run against a hosted environment. Fail closed: require ENV to be
-  // explicitly "development" or "test". An unset/empty ENV, ENV=production, or
-  // anything else (staging, preview, a mislabelled deployment) is refused.
-  // `prisma migrate dev`/`reset` fire this hook, so the guard protects those
-  // paths too; `prisma migrate deploy` (the Railway image path) does not.
+  // must never run against a hosted environment. It is registered as the Prisma
+  // seed hook (prisma.config.ts -> migrations.seed), so it also runs on
+  // `prisma migrate dev`/`reset` (`db:migrate`/`db:reset`) — `migrate deploy`
+  // (the Railway image path) never invokes it.
+  //
+  // Only seed when explicitly in local dev / CI: ENV is "development" or "test".
+  // For any other ENV (unset, production, staging, preview, ...) skip cleanly
+  // and exit 0 — throwing here would make the standard `db:migrate`/`db:reset`
+  // setup command fail, since ENV is not part of libs/database's own env.
   const env = process.env.ENV;
   const allowed = new Set(["development", "test"]);
   if (env === undefined || !allowed.has(env)) {
-    throw new Error(
-      `Refusing to seed demo data with ENV=${env ?? "(unset)"}. ` +
-        `seed-demo-month.ts creates accounts with a known password and must be ` +
-        `run explicitly in local development or CI: set ENV=development or ENV=test.`,
+    console.log(
+      `Skipping demo seed: ENV=${env ?? "(unset)"}. ` +
+        `Set ENV=development (or ENV=test) to seed the demo month.`,
     );
+    return false;
   }
 
   const { user, athlete } = await upsertDemoUserAndAthlete();
@@ -605,12 +609,16 @@ async function seedAll() {
     await seedMonthForAthlete(a.athleteId, YEAR, MONTH);
     await seedMonthForAthlete(a.athleteId, YEAR, MONTH + 1);
   }
+
+  return true;
 }
 
 seedAll()
-  .then(() => {
-    // eslint-disable-next-line no-console
-    console.log("Demo month seeded successfully");
+  .then((seeded) => {
+    if (seeded) {
+      // eslint-disable-next-line no-console
+      console.log("Demo month seeded successfully");
+    }
   })
   .catch((err) => {
     // eslint-disable-next-line no-console
