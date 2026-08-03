@@ -6,7 +6,10 @@ name: Review gate
 # commit status, which is a required status check on main.
 
 on:
-  pull_request:
+  # pull_request_target rather than pull_request: a fork-triggered pull_request run
+  # gets a read-only token and could not publish the status. No pull request code is
+  # checked out or executed here.
+  pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
   pull_request_review_comment:
     types: [created, edited, deleted]
@@ -45,14 +48,15 @@ jobs:
           fi
 
           for pr in $prs; do
-            payload=$(gh api graphql \
+            gh api graphql --paginate \
               -f owner="$owner" -f name="$name" -F number="$pr" \
               -f query='
-                query($owner: String!, $name: String!, $number: Int!) {
+                query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
                   repository(owner: $owner, name: $name) {
                     pullRequest(number: $number) {
                       headRefOid
-                      reviewThreads(first: 100) {
+                      reviewThreads(first: 100, after: $endCursor) {
+                        pageInfo { hasNextPage endCursor }
                         nodes {
                           isResolved
                           isOutdated
@@ -61,13 +65,13 @@ jobs:
                       }
                     }
                   }
-                }')
+                }' > pages.json
 
-            sha=$(jq -r '.data.repository.pullRequest.headRefOid' <<<"$payload")
-            open_findings=$(jq '[.data.repository.pullRequest.reviewThreads.nodes[]
+            sha=$(jq -s -r '.[0].data.repository.pullRequest.headRefOid' pages.json)
+            open_findings=$(jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]
               | select(.isResolved == false and .isOutdated == false)
               | select(.comments.nodes[0].author.login == "devin-ai-integration")]
-              | length' <<<"$payload")
+              | length' pages.json)
 
             if [ "$open_findings" -eq 0 ]; then
               state=success
