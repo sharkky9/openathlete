@@ -28,16 +28,17 @@ CURL_USER="$(printf '%s:%s' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" 
   sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
 
 s3() {
+  # sh has no locals, so the prefixed names keep callers' variables intact.
   # Credentials go in through a config on stdin so they never reach argv.
-  method="$1"
-  key="$2"
+  s3_method="$1"
+  s3_key="$2"
   shift 2
   printf 'user = "%s"\n' "$CURL_USER" |
     curl --config - --fail --silent --show-error \
       --aws-sigv4 "aws:amz:${REGION}:s3" \
-      --request "$method" \
+      --request "$s3_method" \
       "$@" \
-      "${BASE_URL}${key}"
+      "${BASE_URL}${s3_key}"
 }
 
 # Restore drills target a scratch database that does not exist yet.
@@ -45,6 +46,13 @@ if [ "${CREATE_TARGET_DB:-0}" = "1" ]; then
   TARGET_DB="${TARGET_DATABASE_URL##*/}"
   TARGET_DB="${TARGET_DB%%\?*}"
   ADMIN_URL="${TARGET_DATABASE_URL%/*}/postgres"
+  # The name is interpolated into DDL, so refuse anything that could end the identifier.
+  case "$TARGET_DB" in
+    '' | *[!A-Za-z0-9_-]*)
+      echo "Refusing to create database '${TARGET_DB}': name must match [A-Za-z0-9_-]+" >&2
+      exit 1
+      ;;
+  esac
   echo "Recreating scratch database ${TARGET_DB}"
   psql --quiet --dbname="$ADMIN_URL" --command="DROP DATABASE IF EXISTS \"${TARGET_DB}\""
   psql --quiet --dbname="$ADMIN_URL" --command="CREATE DATABASE \"${TARGET_DB}\""

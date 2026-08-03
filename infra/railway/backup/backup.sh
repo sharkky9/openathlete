@@ -36,16 +36,17 @@ CURL_USER="$(printf '%s:%s' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" 
 
 s3() {
   # s3 <method> <key> [curl args...]
+  # sh has no locals, so the prefixed names keep callers' variables intact.
   # Credentials go in through a config on stdin so they never reach argv.
-  method="$1"
-  key="$2"
+  s3_method="$1"
+  s3_key="$2"
   shift 2
   printf 'user = "%s"\n' "$CURL_USER" |
     curl --config - --fail --silent --show-error \
       --aws-sigv4 "aws:amz:${REGION}:s3" \
-      --request "$method" \
+      --request "$s3_method" \
       "$@" \
-      "${BASE_URL}${key}"
+      "${BASE_URL}${s3_key}"
 }
 
 echo "Dumping database to ${DUMP}"
