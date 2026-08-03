@@ -3,7 +3,7 @@ import { Redis } from 'ioredis';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { ApiEnvSchemaType } from '@openathlete/shared';
+import { ApiEnvSchemaType, NODE_ENV } from '@openathlete/shared';
 
 import { PrismaService } from '../../prisma/services/prisma.service';
 
@@ -29,6 +29,7 @@ const CHECK_TIMEOUT_MS = 3000;
 export class HealthService implements OnModuleDestroy {
   private readonly logger = new Logger(HealthService.name);
   private redisClient: Redis | null = null;
+  private redisConnecting: Promise<void> | null = null;
 
   constructor(
     private readonly prismaService: PrismaService,
@@ -67,22 +68,53 @@ export class HealthService implements OnModuleDestroy {
       return { status: 'up' };
     } catch (error) {
       this.logger.warn(`Database readiness check failed: ${toMessage(error)}`);
-      return { status: 'down', error: toMessage(error) };
+      return { status: 'down', error: this.publicError(error) };
     }
   }
 
   private async checkRedis(): Promise<DependencyCheck> {
     try {
       const client = this.getRedisClient();
-      if (client.status === 'wait' || client.status === 'end') {
-        await this.withTimeout(client.connect(), 'redis');
-      }
+      await this.ensureConnected(client);
       await this.withTimeout(client.ping(), 'redis');
       return { status: 'up' };
     } catch (error) {
       this.logger.warn(`Redis readiness check failed: ${toMessage(error)}`);
-      return { status: 'down', error: toMessage(error) };
+      return { status: 'down', error: this.publicError(error) };
     }
+  }
+
+  /**
+   * Opens the lazily created client, sharing a single in-flight attempt so that
+   * concurrent readiness requests never race on `connect()` (ioredis rejects a
+   * second call with "Redis is already connecting/connected").
+   */
+  private async ensureConnected(client: Redis): Promise<void> {
+    if (client.status !== 'wait' && client.status !== 'end') {
+      return;
+    }
+
+    if (!this.redisConnecting) {
+      this.redisConnecting = this.withTimeout(
+        client.connect(),
+        'redis',
+      ).finally(() => {
+        this.redisConnecting = null;
+      });
+    }
+
+    await this.redisConnecting;
+  }
+
+  /**
+   * Driver errors name the connection target (host, port, database), so the
+   * detail stays in the logs and callers of the public endpoint only learn
+   * which dependency is unreachable.
+   */
+  private publicError(error: unknown): string {
+    return this.configService.get('NODE_ENV') === NODE_ENV.PROD
+      ? 'unreachable'
+      : toMessage(error);
   }
 
   private getRedisClient(): Redis {

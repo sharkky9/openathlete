@@ -24,10 +24,14 @@ and the alerting policy. Deployment/provisioning itself is covered by
     "uptime": 412,
     "checks": {
       "database": { "status": "up" },
-      "redis": { "status": "down", "error": "redis check timed out" }
+      "redis": { "status": "down", "error": "unreachable" }
     }
   }
   ```
+
+  The endpoint is unauthenticated, so in production the `error` field is just
+  `"unreachable"`; the driver message (which names hosts, ports and database
+  names) is written to the API logs instead, and shipped to Better Stack.
 
 - The `web` container is a static nginx SPA; `/healthz` is answered by nginx directly so
   monitoring never depends on the JS bundle.

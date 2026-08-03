@@ -39,7 +39,7 @@ export function resolveBetterStackLogConfig(
   }
 
   return {
-    sourceToken: explicitToken ?? fromDsn.sourceToken,
+    sourceToken: explicitToken || fromDsn.sourceToken,
     ingestingHost: explicitHost ?? fromDsn.ingestingHost,
     environment,
     service,
