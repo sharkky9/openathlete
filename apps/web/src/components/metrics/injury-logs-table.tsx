@@ -16,10 +16,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { m } from '@/paraglide/messages';
+import { getLocale } from '@/paraglide/runtime';
 import { getPainScoreColor } from '@/utils/color';
+import { getDateFnsLocale } from '@/utils/locales';
 import { cn } from '@/utils/shadcn';
 import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 
 import { AthleteInjury, INJURY_STATUS } from '@openathlete/shared';
 
@@ -114,7 +115,7 @@ export function InjuryLogsTable({
               <TableRow key={injury.athleteInjuryId}>
                 <TableCell>
                   {format(new Date(injury.updatedAt), 'dd/MM/yyyy', {
-                    locale: fr,
+                    locale: getDateFnsLocale(getLocale()),
                   })}
                 </TableCell>
                 <TableCell className="font-medium">{injury.location}</TableCell>

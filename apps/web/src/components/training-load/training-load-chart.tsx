@@ -10,8 +10,9 @@ import {
 } from '@/components/ui/chart';
 import { Loader } from '@/components/ui/loader';
 import * as m from '@/paraglide/messages.js';
+import { getLocale } from '@/paraglide/runtime';
+import { getDateFnsLocale } from '@/utils/locales';
 import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { useMemo } from 'react';
 import {
   Area,
@@ -52,6 +53,8 @@ export function TrainingLoadChart({
     finalEndDate,
     athleteId,
   );
+  const dateFnsLocale = getDateFnsLocale(getLocale());
+
   const chartData = useMemo(() => {
     if (!history) return [];
     return history
@@ -61,13 +64,13 @@ export function TrainingLoadChart({
       })
       .map((item) => ({
         date: item.date.getTime(),
-        dateLabel: format(item.date, 'dd MMM', { locale: fr }),
+        dateLabel: format(item.date, 'dd MMM', { locale: dateFnsLocale }),
         load: item.load,
         atl: item.atl,
         ctl: item.ctl,
         tsb: item.tsb,
       }));
-  }, [history]);
+  }, [history, dateFnsLocale]);
 
   return (
     <Card>
@@ -142,7 +145,7 @@ export function TrainingLoadChart({
                           typeof value === 'number' ? value : Number(value);
                         if (Number.isNaN(timestamp)) return '';
                         return format(new Date(timestamp), 'dd MMM', {
-                          locale: fr,
+                          locale: dateFnsLocale,
                         });
                       } catch (error) {
                         console.error('Error formatting tick:', value, error);
@@ -163,7 +166,7 @@ export function TrainingLoadChart({
                               typeof value === 'number' ? value : Number(value);
                             if (Number.isNaN(timestamp)) return String(value);
                             return format(new Date(timestamp), 'dd MMMM yyyy', {
-                              locale: fr,
+                              locale: dateFnsLocale,
                             });
                           } catch (error) {
                             console.error(

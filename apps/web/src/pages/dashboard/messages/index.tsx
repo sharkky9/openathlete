@@ -16,8 +16,10 @@ import { Separator } from '@/components/ui/separator';
 import { UnreadBadge } from '@/components/ui/unread-badge';
 import { useSetPageActions } from '@/hooks/use-page-actions';
 import { m } from '@/paraglide/messages';
+import { getLocale } from '@/paraglide/runtime';
 import { AnalyticsEvent } from '@/utils/analytics-events';
 import { isCapacitor } from '@/utils/capacitor';
+import { getDateLocale } from '@/utils/locales';
 import { calculateUnreadCount } from '@/utils/messages';
 import { cn } from '@/utils/shadcn';
 import { motion } from 'framer-motion';
@@ -174,10 +176,17 @@ export function MessagesPage() {
     setNewThreadDialogOpen(true);
   }, [setNewThreadDialogOpen]);
 
+  const threadCount = threads?.length ?? 0;
+  const threadCountLabel =
+    new Intl.PluralRules(getDateLocale(getLocale())).select(threadCount) ===
+    'one'
+      ? m.messages_thread_count_one({ count: threadCount })
+      : m.messages_thread_count_other({ count: threadCount });
+
   const pageTitle = m.messages();
   const conversationTitle = activeId
     ? messageThreads?.find((t) => t.messageThreadId === activeMessageThreadId)
-        ?.title || `Thread ${activeId}`
+        ?.title || m.messages_thread_fallback_title({ threadId: activeId })
     : pageTitle;
 
   const createAction = useMemo(
@@ -257,8 +266,7 @@ export function MessagesPage() {
           <div className="flex-shrink-0 px-4 py-2 border-b border-border bg-background">
             <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs text-muted-foreground">
-                {threads?.length || 0}{' '}
-                {(threads?.length || 0) > 1 ? 'conversations' : 'conversation'}
+                {threadCountLabel}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -268,7 +276,7 @@ export function MessagesPage() {
                 onClick={() => setFilter('all')}
                 className="h-7 text-xs"
               >
-                Tous
+                {m.messages_filter_all()}
               </Button>
               <Button
                 variant={filter === 'unread' ? 'default' : 'ghost'}
@@ -276,7 +284,7 @@ export function MessagesPage() {
                 onClick={() => setFilter('unread')}
                 className="h-7 text-xs"
               >
-                Non lus
+                {m.messages_filter_unread()}
               </Button>
             </div>
           </div>
@@ -314,12 +322,14 @@ export function MessagesPage() {
                             ? threadTitle.length > 25
                               ? threadTitle.substring(0, 25) + '...'
                               : threadTitle
-                            : `Thread ${threadId}`}
+                            : m.messages_thread_fallback_title({ threadId })}
                         </h3>
                         {unreadCount > 0 && <UnreadBadge count={unreadCount} />}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(threadCreatedAt).toLocaleDateString()}
+                        {new Date(threadCreatedAt).toLocaleDateString(
+                          getDateLocale(getLocale()),
+                        )}
                       </p>
                     </div>
                     {(threads?.length || 0) > 1 && (
@@ -393,7 +403,7 @@ export function MessagesPage() {
           <div className="flex-1 flex items-center justify-center text-muted-foreground">
             <div className="text-center">
               <MessageCircle className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p>Select or create a conversation</p>
+              <p>{m.chatbot_select_or_create()}</p>
             </div>
           </div>
         )}
@@ -431,7 +441,7 @@ export function MessagesPage() {
               onClick={() => setFilter('all')}
               className="h-7"
             >
-              Tous
+              {m.messages_filter_all()}
             </Button>
             <Button
               variant={filter === 'unread' ? 'default' : 'ghost'}
@@ -439,13 +449,10 @@ export function MessagesPage() {
               onClick={() => setFilter('unread')}
               className="h-7"
             >
-              Non lus
+              {m.messages_filter_unread()}
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {threads?.length || 0}{' '}
-            {(threads?.length || 0) > 1 ? 'conversations' : 'conversation'}
-          </p>
+          <p className="text-sm text-muted-foreground">{threadCountLabel}</p>
         </div>
 
         <ScrollArea className="flex-1 min-h-0">
@@ -482,12 +489,14 @@ export function MessagesPage() {
                           ? threadTitle.length > 25
                             ? threadTitle.substring(0, 25) + '...'
                             : threadTitle
-                          : `Thread ${threadId}`}
+                          : m.messages_thread_fallback_title({ threadId })}
                       </h3>
                       {unreadCount > 0 && <UnreadBadge count={unreadCount} />}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(threadCreatedAt).toLocaleDateString()}
+                      {new Date(threadCreatedAt).toLocaleDateString(
+                        getDateLocale(getLocale()),
+                      )}
                     </p>
                   </div>
                   {(threads?.length || 0) > 1 && (
@@ -516,7 +525,8 @@ export function MessagesPage() {
               <h2 className="text-lg font-semibold">
                 {messageThreads?.find(
                   (t) => t.messageThreadId === activeMessageThreadId,
-                )?.title || `Thread ${activeId}`}
+                )?.title ||
+                  m.messages_thread_fallback_title({ threadId: activeId })}
               </h2>
             </div>
 
@@ -537,7 +547,7 @@ export function MessagesPage() {
           <div className="flex-1 flex items-center justify-center text-muted-foreground">
             <div className="text-center">
               <MessageCircle className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p>Select or create a conversation</p>
+              <p>{m.chatbot_select_or_create()}</p>
             </div>
           </div>
         )}

@@ -966,5 +966,11 @@
   "ios_payment_block_message": "To complete your purchase or manage your subscription, please visit our web application.",
   "ios_payment_block_go_to_web": "Go to web app",
   "feature_unavailable_ios": "Feature unavailable",
-  "feature_unavailable_ios_description": "This feature is not available on iOS. Please use the web application to access subscription features."
+  "feature_unavailable_ios_description": "This feature is not available on iOS. Please use the web application to access subscription features.",
+  "messages_filter_all": "All",
+  "messages_filter_unread": "Unread",
+  "messages_thread_count_one": "{count} conversation",
+  "messages_thread_count_other": "{count} conversations",
+  "messages_thread_fallback_title": "Thread {threadId}",
+  "messages_message_edited": "edited"
 }

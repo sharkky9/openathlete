@@ -17,6 +17,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { m } from '@/paraglide/messages';
+import { getLocale } from '@/paraglide/runtime';
+import { getDateLocale } from '@/utils/locales';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -41,7 +43,7 @@ export function CoachesTab() {
     },
   });
   const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString(undefined, {
+    new Date(date).toLocaleDateString(getDateLocale(getLocale()), {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

@@ -19,6 +19,8 @@ import { Separator } from '@/components/ui/separator';
 import { UnreadBadge } from '@/components/ui/unread-badge';
 import { useChatbot } from '@/contexts/chatbot';
 import { m } from '@/paraglide/messages';
+import { getLocale } from '@/paraglide/runtime';
+import { getDateLocale } from '@/utils/locales';
 import { calculateUnreadCount } from '@/utils/messages';
 import { cn } from '@/utils/shadcn';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -345,9 +347,9 @@ export function ChatWindow() {
                             <div className="flex items-center justify-between w-full gap-2">
                               <span className="flex-1 truncate">
                                 {threadTitle || `Thread ${threadId}`} -{' '}
-                                {new Date(
-                                  thread.createdAt,
-                                ).toLocaleDateString()}
+                                {new Date(thread.createdAt).toLocaleDateString(
+                                  getDateLocale(getLocale()),
+                                )}
                               </span>
                               {unreadCount > 0 && (
                                 <UnreadBadge count={unreadCount} />

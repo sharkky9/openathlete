@@ -3,6 +3,9 @@ import { useMessagesWebSocket } from '@/api/messages/use-messages-websocket.hook
 import { useGetMeQuery } from '@/api/user';
 import { Loader } from '@/components/ui/loader';
 import { useWindowVisibility } from '@/hooks/use-window-visibility';
+import { m } from '@/paraglide/messages';
+import { getLocale } from '@/paraglide/runtime';
+import { getDateLocale } from '@/utils/locales';
 import { cn } from '@/utils/shadcn';
 import { CheckCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -123,13 +126,15 @@ function MessageBubble({
 
             <div className="flex items-center gap-2 mt-2">
               <p className="text-xs opacity-60">
-                {new Date(message.createdAt).toLocaleTimeString('fr-FR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {new Date(message.createdAt).toLocaleTimeString(
+                  getDateLocale(getLocale()),
+                  { hour: '2-digit', minute: '2-digit' },
+                )}
               </p>
               {message.editedAt && (
-                <p className="text-xs opacity-60 italic">édité</p>
+                <p className="text-xs opacity-60 italic">
+                  {m.messages_message_edited()}
+                </p>
               )}
               {isUser && (
                 <>

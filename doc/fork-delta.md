@@ -101,6 +101,40 @@ conflict-prone file in the delta; on conflict, take upstream's lockfile and re-r
 **Upgrade test:** `pnpm install --frozen-lockfile`, then `pnpm --filter @openathlete/website build`.
 CI builds the API and web apps only, so the website build has to be run locally during an upgrade.
 
+## Localized UI strings and date formatting
+
+**Reason:** the Messages page hard-coded the French filter labels `Tous` / `Non lus` and an English
+thread count with a naive `n > 1` plural rule, and several date formatters were pinned to `fr` /
+`fr-FR`, so an English user saw French labels and month names (issues #9 and #11).
+
+**Implementation:** the affected strings go through Paraglide (`m.messages_filter_all()`,
+`m.messages_filter_unread()`, `m.messages_thread_count_one/_other()`,
+`m.messages_thread_fallback_title()`, `m.messages_message_edited()`, `m.chatbot_select_or_create()`)
+with the plural form selected by `Intl.PluralRules` on the active locale; the date formatters use
+the existing `getDateLocale()` / `getDateFnsLocale()` helpers with `getLocale()` instead of a
+hard-coded locale.
+
+**Upstream modifications:** `apps/web/messages/{en,fr}.json` (six new keys),
+`apps/web/src/pages/dashboard/messages/index.tsx`,
+`apps/web/src/components/messages/message-messages.tsx`,
+`apps/web/src/components/training-load/training-load-chart.tsx`,
+`apps/web/src/components/calendar/calendar-weekly-load-chart.tsx`,
+`apps/web/src/components/metrics/injury-logs-table.tsx`,
+`apps/web/src/components/chatbot/block-renderer.tsx`,
+`apps/web/src/components/chatbot/chat-window.tsx`,
+`apps/web/src/views/dashboard/coach-dashboard-view.tsx`,
+`apps/web/src/views/dashboard/settings-view/{athletes,coaches}-tab.tsx`.
+
+**Upstream candidate:** yes — a straight i18n bug fix using upstream's own helpers, with no
+fork-specific behaviour. The message catalogs are a likely conflict point on integration; keep both
+sides' keys.
+
+**Removal condition:** upstream fixes the same strings and formatters; then take upstream's version.
+
+**Upgrade test:** `pnpm check:locale-parity`, then load the Messages page and the Statistics chart
+in English and in French and confirm the filter labels, thread count and chart axis follow the
+switcher.
+
 ## Merge policy automation
 
 **Reason:** the fork wants Devin-authored PRs to merge themselves once checks and Devin Review are

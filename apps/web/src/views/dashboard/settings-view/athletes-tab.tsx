@@ -20,7 +20,9 @@ import {
 } from '@/components/ui/table';
 import { useAthleteLimit } from '@/hooks/use-feature-access';
 import { m } from '@/paraglide/messages';
+import { getLocale } from '@/paraglide/runtime';
 import { getPath } from '@/routes/paths';
+import { getDateLocale } from '@/utils/locales';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -61,7 +63,7 @@ export function AthletesTab() {
     },
   });
   const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString(undefined, {
+    new Date(date).toLocaleDateString(getDateLocale(getLocale()), {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
