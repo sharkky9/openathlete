@@ -1,3 +1,4 @@
+export * from './password-policy';
 export * from './login.dto';
 export * from './firebase-login.dto';
 export * from './auth-response.dto';

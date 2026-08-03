@@ -9,6 +9,7 @@ import { isCapacitor } from './utils/capacitor';
 import { initChunkLoadRecovery } from './utils/chunk-recovery';
 import { initErrorMonitoring } from './utils/error-monitoring';
 import { initStatusBar } from './utils/status-bar';
+import { initZodErrorMap } from './utils/zod-error-map';
 
 posthog.init(import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN, {
   api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
@@ -29,6 +30,7 @@ initErrorMonitoring();
 loadAnalyticsScripts();
 initStatusBar();
 initChunkLoadRecovery();
+initZodErrorMap();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

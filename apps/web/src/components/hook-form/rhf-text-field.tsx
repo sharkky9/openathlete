@@ -24,40 +24,45 @@ export const RHFTextField = ({ name, type, label, ...other }: Props) => {
         name={name}
         control={control}
         render={({ field, fieldState: { error } }) => (
-          <Input
-            {...field}
-            type={type}
-            value={
-              type === 'number'
-                ? field.value === undefined ||
-                  field.value === null ||
-                  field.value === ''
-                  ? ''
-                  : field.value
-                : field.value === undefined || field.value === null
-                  ? ''
-                  : field.value
-            }
-            onChange={(event) => {
-              const value = event.target.value;
-              let inserted;
-
-              if (type === 'number') {
-                if (value === '' || value === null || value === undefined) {
-                  inserted = '';
-                } else {
-                  const numValue = Number(value);
-                  inserted = Number.isNaN(numValue) ? '' : numValue;
-                }
-              } else {
-                inserted = value;
+          <>
+            <Input
+              {...field}
+              type={type}
+              value={
+                type === 'number'
+                  ? field.value === undefined ||
+                    field.value === null ||
+                    field.value === ''
+                    ? ''
+                    : field.value
+                  : field.value === undefined || field.value === null
+                    ? ''
+                    : field.value
               }
+              onChange={(event) => {
+                const value = event.target.value;
+                let inserted;
 
-              field.onChange(inserted);
-            }}
-            {...other}
-            className={cn(other.className, error && 'border-red-500')}
-          />
+                if (type === 'number') {
+                  if (value === '' || value === null || value === undefined) {
+                    inserted = '';
+                  } else {
+                    const numValue = Number(value);
+                    inserted = Number.isNaN(numValue) ? '' : numValue;
+                  }
+                } else {
+                  inserted = value;
+                }
+
+                field.onChange(inserted);
+              }}
+              {...other}
+              className={cn(other.className, error && 'border-red-500')}
+            />
+            {error?.message && (
+              <p className="text-sm text-red-500">{error.message}</p>
+            )}
+          </>
         )}
       />
     </div>

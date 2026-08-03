@@ -234,3 +234,32 @@ the API side); then take upstream's version.
 **Upgrade test:** log in as an athlete, load the dashboard and the calendar, and check in the
 Network tab that `/metric`, `/metric/latest` and `/training-load/metrics` are each requested once
 with a `200` and no preceding `400`.
+
+## Auth forms report validation and server errors
+
+**Reason:** signup and login silently swallowed every failure (issue #10). Client-side validation
+errors were never rendered, the axios response interceptor resolved 401 responses instead of
+rejecting, and neither mutation had an `onError` handler, so a wrong password or an invalid email
+produced no feedback at all.
+
+**Implementation:** `apps/web/src/utils/axios.ts` rethrows after clearing tokens on 401;
+`apps/web/src/components/hook-form/rhf-text-field.tsx` renders `fieldState.error.message` like the
+other RHF fields already do; `apps/web/src/utils/zod-error-map.ts` (new) routes Zod's default
+messages through Paraglide and is installed in `apps/web/src/main.tsx`; the login and create-account
+views toast on failure; the shared auth DTOs gained the minimum lengths the forms need
+(`libs/shared/src/types/dtos/auth/password-policy.ts`, new).
+
+**Upstream modifications:** `apps/web/src/utils/axios.ts`, `apps/web/src/main.tsx`,
+`apps/web/src/components/hook-form/rhf-text-field.tsx`, `apps/web/src/views/auth/login-view.tsx`,
+`apps/web/src/views/auth/create-account-view.tsx`, `apps/web/messages/{en,fr}.json`,
+`libs/shared/src/types/dtos/auth/{login,create-account,password-reset}.dto.ts` and that directory's
+`index.ts`.
+
+**Upstream candidate:** yes — a straight bug fix with no fork-specific behaviour; propose it
+upstream and drop this entry once it is merged there.
+
+**Removal condition:** upstream ships error feedback on the auth forms.
+
+**Upgrade test:** on the upgraded branch, submit the signup form with `not-an-email` and a
+2-character password (inline errors on both fields), sign up with an already-registered email
+(error toast), and log in with a wrong password ("Incorrect email or password", button not stuck).
