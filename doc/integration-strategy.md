@@ -38,6 +38,15 @@ array (`apps/web/src/components/connectors/connectors-list.tsx:39-44`), not a co
 Firebase (`VITE_FIREBASE_*`). Dormant providers therefore keep a visible tile that fails when
 clicked, unless a small fork edit hides them.
 
+**`VITE_*` variables are build-time, not runtime.** Vite inlines `import.meta.env.VITE_*` when the
+bundle is compiled, the web image is a static nginx build (`apps/web/Dockerfile`), and that
+Dockerfile declares exactly one such variable — `ARG VITE_API_BASE_URL` before `pnpm build`. Setting
+any other `VITE_*` variable on the Railway web service therefore has **no effect on the shipped
+bundle** until the Dockerfile declares it too. Every `VITE_*` mechanic below (Stripe, Better Stack,
+Firebase) carries a two-line `ARG`/`ENV` addition in `apps/web/Dockerfile` — which is cheap, because
+that file is *already* a fork-modified file (`doc/fork-delta.md`, "Web container renders nginx.conf
+at startup"), so it extends an existing delta rather than opening a new one.
+
 ---
 
 ## Strava
@@ -206,11 +215,22 @@ Stripe. A plan can be set directly in the database. See
 
 **Recommendation: Dormant, with the UI hidden by configuration.** Keep `STRIPE_SECRET_KEY` at its
 placeholder so the eager constructor is satisfied; set **`VITE_DISABLE_PAYMENTS=true`** on the web
-service. That single variable removes the Subscription settings tab
-(`settings-view.tsx:56`) and turns the paywall dialog into an "unavailable" message
-(`paywall-dialog.tsx:137-152`) — upstream's own kill switch, built for the iOS build, doing exactly
-what this fork wants. This is the cleanest disposal in the whole document: configuration only, zero
-code, zero conflict.
+service **and declare it in the web Dockerfile** so the build actually sees it:
+
+```dockerfile
+# apps/web/Dockerfile, alongside the existing VITE_API_BASE_URL ARG
+ARG VITE_DISABLE_PAYMENTS=""
+ENV VITE_DISABLE_PAYMENTS=$VITE_DISABLE_PAYMENTS
+```
+
+With both in place the Subscription settings tab disappears (`settings-view.tsx:56`) and the paywall
+dialog becomes an "unavailable" message (`paywall-dialog.tsx:137-152`) — upstream's own kill switch,
+built for the iOS build, doing exactly what this fork wants. Still the cleanest disposal in the
+document: no application code changes, and the only edit is two lines in a Dockerfile this fork
+already patches.
+
+Without the Dockerfile lines the variable is inert and the payment UI stays visible — do not set one
+without the other.
 
 Do **not** remove Stripe. It is imported by `SubscriptionModule`, which owns the plan gating the AI
 features read; removing it is a broad change to upstream internals for no benefit.
@@ -280,8 +300,9 @@ signup page.
 **Recommendation: Dormant.** Email + password login works. Google sign-in for a single user who
 already has a password is not worth a Firebase project. If the dead button annoys, hiding it is a
 small fork edit in `oauth-buttons.tsx` gated on `import.meta.env.VITE_FIREBASE_API_KEY` — the same
-config-presence pattern the file already uses, and a plausible upstream candidate. Recorded as
-optional, not recommended.
+config-presence pattern the file already uses, and a plausible upstream candidate. It needs the
+`VITE_FIREBASE_*` variables declared in `apps/web/Dockerfile` as well, for the same build-time
+reason. Recorded as optional, not recommended.
 
 **Ongoing cost.** €0, zero conflict surface while dormant.
 
@@ -305,7 +326,8 @@ deployment are going to a third party the fork owner has no relationship with. T
 
 **Recommendation: Neutralize the web side; Dormant on the API side.** The web DSN should come from
 `import.meta.env.VITE_BETTER_STACK_DSN` with the init short-circuiting when it is unset — a
-~5-line change in `error-monitoring.ts`, an upstream file, and a strong upstream candidate (upstream
+~5-line change in `error-monitoring.ts` plus the same two-line `ARG`/`ENV` pair in
+`apps/web/Dockerfile`, and a strong upstream candidate (upstream
 also should not hard-code its DSN into every fork). Until that lands, the honest description of the
 current state is "this fork exports frontend telemetry to a third party by default".
 
@@ -600,14 +622,14 @@ follow-up issue.
 | 7 | **Suunto** | **Dormant** | leave `SUUNTO_*` unset | €0 | none |
 | 8 | **Coros** | **Dormant** | already disabled upstream; do nothing | €0 | none |
 | 9 | **Polar** | **Dormant** + route closed (row 11) | keep `POLAR_*` placeholders (schema requires them) | €0 | none |
-| 10 | **Stripe** | **Dormant, UI hidden** | keep `STRIPE_SECRET_KEY=sk_test_unconfigured`; set `VITE_DISABLE_PAYMENTS=true` on the web service | €0 | **none** |
+| 10 | **Stripe** | **Dormant, UI hidden** | keep `STRIPE_SECRET_KEY=sk_test_unconfigured`; set `VITE_DISABLE_PAYMENTS=true` on the web service **and** declare `ARG`/`ENV VITE_DISABLE_PAYMENTS` in `apps/web/Dockerfile` | €0 | 2 lines in an already-patched file |
 | 11 | Unused provider webhook routes | **Neutralize** | fork-owned NestJS middleware returning 404 for a configurable path list; registered from a fork-owned module | — | 1 new module + 1 registration line |
 | 12 | Polar signature verification | **Fix** | fail closed when the header is absent; length-check before `timingSafeEqual` (`polar.provider.service.ts:598-617`) | — | 1 small edit, upstream candidate |
 | 13 | Garmin `callbackURL` host allowlist | **Fix before Garmin is ever configured** | allowlist `apis.garmin.com` in `getSafeGarminCallbackUrl` (`garmin.provider.service.ts:87-109`), verified against Garmin's partner docs | — | 1 small edit, upstream candidate |
-| 14 | **Better Stack (web)** | **Neutralize** | move the hard-coded DSN in `error-monitoring.ts:5-6` behind `VITE_BETTER_STACK_DSN`; no-op when unset | €0 | 1 small edit, strong upstream candidate |
+| 14 | **Better Stack (web)** | **Neutralize** | move the hard-coded DSN in `error-monitoring.ts:5-6` behind `VITE_BETTER_STACK_DSN`; no-op when unset; declare the `ARG`/`ENV` in `apps/web/Dockerfile` | €0 | 2 small edits, strong upstream candidate |
 | 15 | **Better Stack (API)** | **Dormant** | leave `BETTER_STACK_DSN` unset unless error tracking is wanted | €0 | none |
 | 16 | **Firebase** | **Dormant** | leave `VITE_FIREBASE_*` and `FIREBASE_SERVICE_ACCOUNT_JSON` unset; accept the dead "Continue with Google" button | €0 | none |
-| 17 | Firebase dead button | **Optional fix** | hide the OAuth buttons when `VITE_FIREBASE_API_KEY` is unset (`oauth-buttons.tsx`) | — | 1 small edit |
+| 17 | Firebase dead button | **Optional fix** | hide the OAuth buttons when `VITE_FIREBASE_API_KEY` is unset (`oauth-buttons.tsx`); declare the `ARG`/`ENV` in `apps/web/Dockerfile` | — | 2 small edits |
 | 18 | **OpenAI** | **Dormant**, unless AI wanted | if wanted: set `OPENAI_API_KEY` with a spend cap | ~€ single digits/mo | none |
 | 19 | **Plan gating for AI** | **Data change**, only with row 18 | `UPDATE subscription SET plan='ATHLETE_PRO', status='active' WHERE user_id=…` | — | **none** |
 | 20 | **Google Generative AI** | **Dormant**, unless AI wanted | if wanted: set `GOOGLE_GENERATIVE_AI_API_KEY` (free tier) and pin `AI_MODEL_POST_ACTIVITY_FEEDBACK` to a stable model | €0 | none |
@@ -639,12 +661,15 @@ web build, and `STRAVA_WEBHOOK_TOKEN` being written to the logs on every webhook
 
 Ranked by conflict risk, the recommended disposals are overwhelmingly at the cheap end:
 
-- **Configuration only, no delta (rows 1, 3, 6, 7, 8, 9, 10, 15, 16, 18, 20)** — thirteen of the
-  twenty rows are a Railway variable or a database row. Notably Stripe, the integration the issue
-  worried about most, disposes of entirely through `VITE_DISABLE_PAYMENTS`, upstream's own flag.
+- **Configuration only, no delta (rows 1, 3, 6, 7, 8, 9, 15, 16, 18, 19, 20)** — eleven of the
+  twenty rows are a Railway variable or a database row and touch no file at all.
+- **Configuration plus a Dockerfile declaration (row 10)** — Stripe, the integration the issue
+  worried about most, disposes of through `VITE_DISABLE_PAYMENTS`, upstream's own flag, at the cost
+  of two lines in `apps/web/Dockerfile`, a file this fork already patches.
 - **A new fork-owned module (row 11)** — the webhook neutralization, one registration line in
   `app.module.ts`.
-- **Small isolated edits to upstream files (rows 2, 4, 5, 12, 13, 14, 17)** — every one of them a
+- **Small isolated edits to upstream files (rows 2, 4, 5, 12, 13, 14, 17)** — the last two also need
+  the Dockerfile declaration described above. Every one of them is a
   bug fix rather than a fork preference, and five of the seven are upstream candidates. Each shrinks
   to zero if upstream accepts it.
 - **No removals are recommended.** Nothing here meets the "upstream is unlikely to touch it again"
