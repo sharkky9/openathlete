@@ -65,4 +65,9 @@ jobs:
             fi
           done
 
-          exit "$failed"
+          # Only an event-driven run, where the failure is one explicit pull
+          # request and actionable, fails the job; a sweep stops at warnings so a
+          # permanently unarmable pull request cannot turn every run red.
+          if [ -n "${EVENT_PR:-}" ]; then
+            exit "$failed"
+          fi
