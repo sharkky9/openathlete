@@ -3,26 +3,66 @@ name: Auto-merge
 # Turns on GitHub auto-merge for pull requests opened by the repository owner or
 # by Devin, so they land on their own once every required check on main is green
 # (CI plus the Devin Review status check).
+#
+# Auto-merge is a per-pull-request flag with no repository-wide equivalent, and
+# the pull_request_target run only fires for pull requests opened after this
+# workflow reached main, so a sweep also picks up any open pull request that
+# still has the flag off.
 
 on:
   pull_request_target:
     types: [opened, reopened, ready_for_review]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   enable-auto-merge:
     name: Enable auto-merge
     runs-on: ubuntu-latest
     if: >-
-      github.event.pull_request.draft == false &&
-      (github.event.pull_request.user.login == 'sharkky9' ||
-       github.event.pull_request.user.login == 'devin-ai-integration[bot]')
+      github.event_name != 'pull_request_target' ||
+      (github.event.pull_request.draft == false &&
+       (github.event.pull_request.user.login == 'sharkky9' ||
+        github.event.pull_request.user.login == 'devin-ai-integration[bot]'))
     steps:
       - name: Enable auto-merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL"
+          REPO: ${{ github.repository }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${EVENT_PR:-}" ]; then
+            prs="$EVENT_PR"
+          else
+            prs=$(gh pr list --repo "$REPO" --state open --limit 200 \
+              --json number,isDraft,author,autoMergeRequest \
+              --jq '.[]
+                | select(.isDraft == false)
+                | select(.autoMergeRequest == null)
+                | select(.author.login == "sharkky9" or .author.login == "app/devin-ai-integration")
+                | .number')
+          fi
+
+          # A pull request that cannot take the flag yet (for example one with
+          # conflicts) must not strand the rest of the sweep.
+          failed=0
+          for pr in $prs; do
+            echo "Enabling auto-merge on #$pr"
+            if ! gh pr merge --auto --squash --repo "$REPO" "$pr"; then
+              echo "::warning::could not enable auto-merge on PR #$pr"
+              failed=1
+            fi
+          done
+
+          exit "$failed"
