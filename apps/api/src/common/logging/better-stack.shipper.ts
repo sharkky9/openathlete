@@ -71,7 +71,11 @@ export class BetterStackLogShipper {
       clearInterval(this.timer);
       this.timer = null;
     }
-    await this.flush();
+    // flush() sends at most one batch, so drain everything that is buffered:
+    // the records written right before a redeploy are the interesting ones.
+    while (this.buffer.length > 0) {
+      await this.flush();
+    }
     this.stopped = true;
   }
 

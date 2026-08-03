@@ -29,7 +29,7 @@ and the alerting policy. Deployment/provisioning itself is covered by
   }
   ```
 
-  The endpoint is unauthenticated, so in production the `error` field is just
+  The endpoint is unauthenticated, so the `error` field is always the constant
   `"unreachable"`; the driver message (which names hosts, ports and database
   names) is written to the API logs instead, and shipped to Better Stack.
 

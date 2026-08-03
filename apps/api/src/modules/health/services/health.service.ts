@@ -3,7 +3,7 @@ import { Redis } from 'ioredis';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { ApiEnvSchemaType, NODE_ENV } from '@openathlete/shared';
+import { ApiEnvSchemaType } from '@openathlete/shared';
 
 import { PrismaService } from '../../prisma/services/prisma.service';
 
@@ -24,6 +24,10 @@ export interface ReadinessReport {
 }
 
 const CHECK_TIMEOUT_MS = 3000;
+
+// The endpoint is unauthenticated and driver errors name the connection target
+// (host, port, database), so the detail is logged instead of returned.
+const PUBLIC_ERROR = 'unreachable';
 
 @Injectable()
 export class HealthService implements OnModuleDestroy {
@@ -68,7 +72,7 @@ export class HealthService implements OnModuleDestroy {
       return { status: 'up' };
     } catch (error) {
       this.logger.warn(`Database readiness check failed: ${toMessage(error)}`);
-      return { status: 'down', error: this.publicError(error) };
+      return { status: 'down', error: PUBLIC_ERROR };
     }
   }
 
@@ -80,7 +84,7 @@ export class HealthService implements OnModuleDestroy {
       return { status: 'up' };
     } catch (error) {
       this.logger.warn(`Redis readiness check failed: ${toMessage(error)}`);
-      return { status: 'down', error: this.publicError(error) };
+      return { status: 'down', error: PUBLIC_ERROR };
     }
   }
 
@@ -104,17 +108,6 @@ export class HealthService implements OnModuleDestroy {
     }
 
     await this.redisConnecting;
-  }
-
-  /**
-   * Driver errors name the connection target (host, port, database), so the
-   * detail stays in the logs and callers of the public endpoint only learn
-   * which dependency is unreachable.
-   */
-  private publicError(error: unknown): string {
-    return this.configService.get('NODE_ENV') === NODE_ENV.PROD
-      ? 'unreachable'
-      : toMessage(error);
   }
 
   private getRedisClient(): Redis {
