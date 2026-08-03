@@ -37,8 +37,13 @@ FROM nginx:alpine AS runtime
 # Copy built assets
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
-# Copy nginx configuration
-COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx configuration (rendered by the nginx entrypoint at startup)
+COPY apps/web/nginx.conf /etc/nginx/templates/default.conf.template
+
+# Only these placeholders are substituted; nginx's own $variables are preserved.
+ENV NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|NGINX_LOCAL_RESOLVERS)$" \
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+    API_UPSTREAM="http://api:3000"
 
 EXPOSE 80
 
