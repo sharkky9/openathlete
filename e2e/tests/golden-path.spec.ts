@@ -86,10 +86,13 @@ test('signup -> onboarding -> create training event -> calendar -> delete accoun
   await page.goto('/dashboard/calendar');
 
   // Desktop: right-click a day cell to open the context menu, then "Plan a training".
-  const today = new Date();
-  const dayCell = page
-    .locator('span', { hasText: new RegExp(`^${today.getDate()}$`) })
-    .first();
+  // Target the 15th of the displayed month. A month grid also renders the
+  // previous month's trailing days (high 20s–31) and the next month's leading
+  // days (single digits, at most ~14), so those outside-month cells can carry the
+  // same number as "today" near a month boundary — matching a bare day number
+  // could then land on the wrong month. A mid-month day like the 15th is the only
+  // kind guaranteed to appear exactly once in the grid, so it is unambiguous.
+  const dayCell = page.locator('span', { hasText: /^15$/ }).first();
   await dayCell.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Plan a training' }).click();
 
