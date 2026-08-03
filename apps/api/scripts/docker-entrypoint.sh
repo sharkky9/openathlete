@@ -22,8 +22,12 @@ decode_secret() {
   
   # Try to decode from base64. `base64 -d` fails on values that are not valid
   # base64 (most plain-text keys), which must not abort the script under `set -e`.
-  DECODED=$(echo "$var_value" | base64 -d 2>/dev/null) || DECODED=""
-  if [ -n "$DECODED" ]; then
+  # The value only counts as base64 when re-encoding the result reproduces it
+  # exactly: some implementations (busybox) silently drop characters outside the
+  # alphabet and would otherwise turn a plain secret into binary garbage.
+  DECODED=$(printf '%s' "$var_value" | base64 -d 2>/dev/null) || DECODED=""
+  REENCODED=$(printf '%s' "$DECODED" | base64 2>/dev/null | tr -d '\n') || REENCODED=""
+  if [ -n "$DECODED" ] && [ "$REENCODED" = "$var_value" ]; then
     # If expected pattern is provided, verify decoded value matches
     if [ -n "$expected_pattern" ]; then
       if echo "$DECODED" | grep -qE "$expected_pattern"; then
