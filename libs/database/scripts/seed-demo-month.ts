@@ -1,28 +1,11 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { config as loadEnv } from "dotenv";
+import { parse as parseEnv } from "dotenv";
 import * as argon2 from "argon2";
 import { prisma } from "../client";
-
-// `dotenv/config` above only loads libs/database/.env (which carries DATABASE_URL
-// but not the auth secrets). HASH_PEPPER lives in apps/api/.env and is what the
-// API verifies logins against, so also load that file — without overriding
-// anything already set in the environment — so the seed hashes the demo password
-// with the SAME pepper. Otherwise a locally configured pepper makes the seeded
-// demo user fail login (401), the exact bug this script set out to fix.
-loadEnv({
-  path: path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "..",
-    "..",
-    "apps",
-    "api",
-    ".env",
-  ),
-});
 
 type Sport =
   | "RUNNING"
@@ -58,8 +41,34 @@ const MONTH = Number(process.env.SEED_MONTH ?? NOW.getUTCMonth() + 1); // 1..12
 // (apps/api/src/modules/auth/services/user.service.ts#hashPassword): argon2 with
 // HASH_PEPPER passed as `secret`. Kept identical so the seeded demo user
 // authenticates through the exact same verification path as a real signup.
-const HASH_PEPPER = process.env.HASH_PEPPER
-  ? Buffer.from(process.env.HASH_PEPPER)
+//
+// HASH_PEPPER is configured in apps/api/.env, not in libs/database's own env, and
+// the demo hash must use the SAME pepper the API verifies against. Read ONLY that
+// one value from the API env file when it isn't already in the environment — do
+// NOT load the whole file into process.env, or the seed's ENV gate and its target
+// DATABASE_URL could be silently inherited from apps/api/.env and point this
+// destructive seed at an unintended database.
+function readApiHashPepper(): string | undefined {
+  if (process.env.HASH_PEPPER !== undefined) return process.env.HASH_PEPPER;
+  try {
+    const apiEnvPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "..",
+      "apps",
+      "api",
+      ".env",
+    );
+    return parseEnv(readFileSync(apiEnvPath)).HASH_PEPPER;
+  } catch {
+    return undefined;
+  }
+}
+
+const HASH_PEPPER_VALUE = readApiHashPepper();
+const HASH_PEPPER = HASH_PEPPER_VALUE
+  ? Buffer.from(HASH_PEPPER_VALUE)
   : undefined;
 
 async function hashPassword(plainPassword: string) {

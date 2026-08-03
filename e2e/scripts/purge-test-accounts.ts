@@ -44,10 +44,19 @@ const OWN_RUN = ['1', 'true', 'yes'].includes(
 );
 
 async function main(): Promise<void> {
-  if (process.env.ENV === 'production') {
+  // Fail closed: this script deletes accounts from whatever DATABASE_URL/API it is
+  // pointed at, so run only when ENV is explicitly `development` or `test`. An
+  // unset/empty ENV, `production`, `staging`, `preview`, or anything else is
+  // refused — blocking `ENV=production` alone would let the common
+  // "exported only DATABASE_URL/API_BASE_URL" case (ENV unset) delete accounts in
+  // whatever it happens to point at.
+  const env = process.env.ENV;
+  const allowed = new Set(['development', 'test']);
+  if (env === undefined || !allowed.has(env)) {
     throw new Error(
-      'Refusing to purge with ENV=production. This script targets local/CI ' +
-        'and disposable environments only.',
+      `Refusing to purge with ENV=${env ?? '(unset)'}. This script deletes ` +
+        'accounts and targets local/CI disposable environments only: set ' +
+        'ENV=development or ENV=test.',
     );
   }
 

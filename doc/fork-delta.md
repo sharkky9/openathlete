@@ -305,7 +305,10 @@ against a shared target, the purge has two modes: the default *backstop* mode ex
 `<runid>` and only considers accounts older than a safety window (`PURGE_MIN_AGE_MINUTES`, default 60),
 so it never deletes a concurrent run's in-flight account; *teardown* mode (`PURGE_OWN_RUN=1`, which the
 CI step sets) targets only the current run's own accounts regardless of age, so a crash that skipped
-the in-spec `DELETE /user` is still cleaned up. The purge refuses to run with `ENV=production`.
+the in-spec `DELETE /user` is still cleaned up. Because it deletes accounts from whatever
+`DATABASE_URL`/API it is pointed at, the purge fails closed: it runs only when `ENV` is explicitly
+`development` or `test` (the CI step sets `ENV=development`) and refuses an unset/empty `ENV`,
+`production`, `staging`, `preview`, or anything else — not just `ENV=production`.
 
 The job is deliberately **not** a required check: `main-protection` (a repository ruleset this fork
 cannot edit) does not list it, and a brand-new browser check should prove itself stable before it can
@@ -365,8 +368,11 @@ Issue #24, item 3.
 **Implementation:** the script now hashes the password with Argon2 and the same optional `HASH_PEPPER`
 handling the auth module uses (`apps/api/src/modules/auth/services/user.service.ts`). Because
 `HASH_PEPPER` lives in `apps/api/.env` (not `libs/database`'s own dotenv scope), the seed explicitly
-loads `apps/api/.env` — without overriding already-set vars — so it hashes with the *same* pepper the
-API verifies against; otherwise a locally configured pepper would make the seeded user fail login. It
+reads **only** the `HASH_PEPPER` value from `apps/api/.env` (via `dotenv.parse`, when it isn't already
+in the environment) so it hashes with the *same* pepper the API verifies against; otherwise a locally
+configured pepper would make the seeded user fail login. It deliberately does **not** load the whole
+API env file into `process.env`, so the seed's `ENV` gate and its target `DATABASE_URL` can never be
+silently inherited from `apps/api/.env` and point this destructive seed at an unintended database. It
 reads `DEMO_EMAIL`/`DEMO_PASSWORD`/`SEED_YEAR`/`SEED_MONTH` from the environment, uses the client's
 camelCase field names, makes each `externalId` unique per athlete, and marks the seeded users
 `onboardingCompleted` so a demo login lands on the seeded calendar rather than the onboarding wizard.
