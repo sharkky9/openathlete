@@ -1,4 +1,7 @@
-const base = '/home/ubuntu/repos/openathlete/apps/api/dist/common/logging';
+const base =
+  process.env.OA_API_DIST ??
+  new URL('../../../../apps/api/dist/common/logging', import.meta.url).pathname;
+
 const { BetterStackLogger } = await import(`${base}/better-stack.logger.js`);
 
 const run = (label, levels) => {

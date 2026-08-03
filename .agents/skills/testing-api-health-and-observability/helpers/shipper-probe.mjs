@@ -1,6 +1,9 @@
 // Exercises the compiled shipper + logger from apps/api/dist
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-const base = '/home/ubuntu/repos/openathlete/apps/api/dist/common/logging';
+const base =
+  process.env.OA_API_DIST ??
+  new URL('../../../../apps/api/dist/common/logging', import.meta.url).pathname;
+
 const { BetterStackLogShipper } = await import(`${base}/better-stack.shipper.js`);
 const { BetterStackLogger } = await import(`${base}/better-stack.logger.js`);
 

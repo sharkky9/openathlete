@@ -61,7 +61,8 @@ Known behaviours to re-check on any change to `apps/api/src/modules/health/*`:
 
 No real Better Stack credentials exist. Run a fake ingest instead:
 
-1. `openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 2 -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1"`
+1. `mkdir -p /tmp/ingest && openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/ingest/key.pem -out /tmp/ingest/cert.pem -days 2 -subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1"`
+   (the helpers below read the certs from `/tmp/ingest`, overridable with `INGEST_CERT_DIR`)
 2. A small `https.createServer` on `127.0.0.1:8443` that logs method/path/`authorization`/body.
 3. Boot the API with `BETTER_STACK_SOURCE_TOKEN=test-token`,
    `BETTER_STACK_INGESTING_HOST=127.0.0.1:8443`, `BETTER_STACK_SERVICE_NAME=...` and
@@ -98,7 +99,8 @@ Useful techniques:
 - If `main.ts` initialises the logger lazily (after Sentry's instrument hook), re-check that the very
   first shipped event is still `Starting Nest application...` — boot logs are easy to lose there.
 
-Ready-made probes live in `helpers/` next to this file (run with node 22 after `pnpm api run build`):
+Ready-made probes live in `helpers/` next to this file (run with node 22 after `pnpm api run build`;
+they resolve `apps/api/dist` relative to the repo, override with `OA_API_DIST`):
 
 | helper | what it proves |
 |---|---|
