@@ -25,8 +25,5 @@
     "@prisma/client": "6.15.0",
     "argon2": "^0.41.1",
     "dotenv": "^16.4.7"
-  },
-  "prisma": {
-    "seed": "tsx scripts/seed-demo-month.ts"
   }
 }

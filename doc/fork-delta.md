@@ -362,12 +362,15 @@ Issue #24, item 3.
 handling the auth module uses (`apps/api/src/modules/auth/services/user.service.ts`), reads
 `DEMO_EMAIL`/`DEMO_PASSWORD`/`SEED_YEAR`/`SEED_MONTH` from the environment, uses the client's
 camelCase field names, makes each `externalId` unique per athlete, and refuses to run with
-`ENV=production`. `libs/database/package.json` gains an `argon2` dependency and a
-`prisma.seed` entry (`tsx scripts/seed-demo-month.ts`).
+`ENV=production`. `libs/database/package.json` gains an `argon2` dependency. The Prisma seed hook is
+registered as `migrations.seed` in `libs/database/prisma.config.ts` (not the `prisma` block in
+`package.json`): a `prisma.config.ts` is present, and under Prisma 6 the config file takes precedence,
+so `package.json`'s `prisma.seed` is ignored. `prisma migrate deploy` — what the Docker image runs —
+does not fire the seed, so only local `prisma db seed`/`migrate reset`/`migrate dev` load demo data.
 
-**Upstream modifications:** `libs/database/scripts/seed-demo-month.ts`, `libs/database/package.json`,
-`pnpm-lock.yaml` (the `argon2` addition). On a lockfile conflict, take upstream's lockfile and re-run
-`pnpm install` rather than resolving by hand.
+**Upstream modifications:** `libs/database/scripts/seed-demo-month.ts`, `libs/database/prisma.config.ts`,
+`libs/database/package.json`, `pnpm-lock.yaml` (the `argon2` addition). On a lockfile conflict, take
+upstream's lockfile and re-run `pnpm install` rather than resolving by hand.
 
 **Upstream candidate:** yes — the script is upstream's and every one of these is a bug fix. The one
 judgement call is re-hashing in the seed rather than importing the API's `UserService` (which would
@@ -376,7 +379,8 @@ dependency-free helper, import that instead of mirroring the algorithm.
 
 **Removal condition:** upstream fixes the seed script.
 
-**Upgrade test:** `pnpm database run db:seed:demo-month` against a local database, then log in as the
-demo user through `POST /auth/login`. A failure here is a regression in the seed or in auth hashing.
+**Upgrade test:** `pnpm database run db:seed:demo-month` (or `pnpm --filter @openathlete/database exec
+prisma db seed`, which must print `Running seed command ...`) against a local database, then log in as
+the demo user through `POST /auth/login`. A failure here is a regression in the seed or in auth hashing.
 If upstream changes the hashing algorithm or pepper handling, this seed must be updated to match
 (compare against `user.service.ts`) — that is a required test update, not a product regression.
