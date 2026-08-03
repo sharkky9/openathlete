@@ -32,11 +32,13 @@ prefix, no throttler and no helmet in `apps/api/src/main.ts`. "We are not using 
 statement about data, not about attack surface.
 
 **Not every disposal is available at configuration level.** The connector tiles are a hard-coded
-array (`apps/web/src/components/connectors/connectors-list.tsx:39-44`), not a config lookup, so
-"hide the connector from the UI by configuration" — the mechanic the issue assumes for *dormant* —
-**does not exist today** for providers. It does exist for Stripe (`VITE_DISABLE_PAYMENTS`) and for
-Firebase (`VITE_FIREBASE_*`). Dormant providers therefore keep a visible tile that fails when
-clicked, unless a small fork edit hides them.
+array (`DEFAULT_SUPPORTED_PROVIDERS`,
+`apps/web/src/components/connectors/connectors-list.tsx:39-44`). `ConnectorsList` does take a
+`supportedProviders` prop (`:31-37`), but no call site passes it, and a prop is not a Railway
+variable, so "hide the connector from the UI by configuration" — the mechanic the issue assumes for
+*dormant* — **does not exist today** for providers. It does exist for Stripe
+(`VITE_DISABLE_PAYMENTS`) and for Firebase (`VITE_FIREBASE_*`). Dormant providers therefore keep a
+visible tile that fails when clicked, unless a small fork edit trims that array or passes the prop.
 
 **`VITE_*` variables are build-time, not runtime.** Vite inlines `import.meta.env.VITE_*` when the
 bundle is compiled, the web image is a static nginx build (`apps/web/Dockerfile`), and that
@@ -73,7 +75,7 @@ at `POST /provider/strava/token` (JWT-guarded, `:176-178`), webhook verification
 `libs/shared/src/types/config/environments/api.environment.ts:88-105`. UI surface: the Strava tile
 in the connectors list and in onboarding
 (`apps/web/src/components/connectors/connectors-list.tsx:39-44`,
-`apps/web/src/views/dashboard/onboarding/onboarding-view.tsx:585`).
+`apps/web/src/views/dashboard/onboarding/onboarding-view.tsx:624`).
 
 **With a placeholder today.** Silently degraded, plus one real leak. The connect flow bounces off
 Strava with `invalid_client`. The webhook POST handler is unauthenticated but inert: it resolves a
