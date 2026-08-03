@@ -1,6 +1,27 @@
 import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadEnv } from "dotenv";
 import * as argon2 from "argon2";
 import { prisma } from "../client";
+
+// `dotenv/config` above only loads libs/database/.env (which carries DATABASE_URL
+// but not the auth secrets). HASH_PEPPER lives in apps/api/.env and is what the
+// API verifies logins against, so also load that file — without overriding
+// anything already set in the environment — so the seed hashes the demo password
+// with the SAME pepper. Otherwise a locally configured pepper makes the seeded
+// demo user fail login (401), the exact bug this script set out to fix.
+loadEnv({
+  path: path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "..",
+    "apps",
+    "api",
+    ".env",
+  ),
+});
 
 type Sport =
   | "RUNNING"
@@ -586,6 +607,14 @@ async function seedAll(): Promise<boolean> {
         `Set ENV=development (or ENV=test) to seed the demo month.`,
     );
     return false;
+  }
+
+  if (HASH_PEPPER === undefined) {
+    console.warn(
+      "Warning: HASH_PEPPER is not set for the seed. If the API runs with a " +
+        "pepper (apps/api/.env), the seeded demo user will fail login. Ensure " +
+        "apps/api/.env exists or export HASH_PEPPER to match the API.",
+    );
   }
 
   const { user, athlete } = await upsertDemoUserAndAthlete();

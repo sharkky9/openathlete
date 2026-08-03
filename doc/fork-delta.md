@@ -363,8 +363,11 @@ September 2025, had no `prisma.seed` entry, and generated a colliding `externalI
 Issue #24, item 3.
 
 **Implementation:** the script now hashes the password with Argon2 and the same optional `HASH_PEPPER`
-handling the auth module uses (`apps/api/src/modules/auth/services/user.service.ts`), reads
-`DEMO_EMAIL`/`DEMO_PASSWORD`/`SEED_YEAR`/`SEED_MONTH` from the environment, uses the client's
+handling the auth module uses (`apps/api/src/modules/auth/services/user.service.ts`). Because
+`HASH_PEPPER` lives in `apps/api/.env` (not `libs/database`'s own dotenv scope), the seed explicitly
+loads `apps/api/.env` — without overriding already-set vars — so it hashes with the *same* pepper the
+API verifies against; otherwise a locally configured pepper would make the seeded user fail login. It
+reads `DEMO_EMAIL`/`DEMO_PASSWORD`/`SEED_YEAR`/`SEED_MONTH` from the environment, uses the client's
 camelCase field names, makes each `externalId` unique per athlete, and marks the seeded users
 `onboardingCompleted` so a demo login lands on the seeded calendar rather than the onboarding wizard.
 Because it creates login-able accounts with a known default password, it seeds only when `ENV` is
