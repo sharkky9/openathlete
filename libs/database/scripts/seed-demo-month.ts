@@ -1,4 +1,5 @@
 import "dotenv/config";
+import * as argon2 from "argon2";
 import { prisma } from "../client";
 
 type Sport =
@@ -13,12 +14,28 @@ type Sport =
   | "ROCK_CLIMBING"
   | "OTHER";
 
-const DEMO_EMAIL = "demo@openathlete.local";
+const DEMO_EMAIL = process.env.DEMO_EMAIL ?? "demo@openathlete.local";
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? "demo-openathlete-2025";
 const DEMO_FIRST_NAME = "Demo";
 const DEMO_LAST_NAME = "Athlete";
 
-const YEAR = Number(2025);
-const MONTH = Number(9); // 9 = September (JS Date uses 0-indexed months, but we will be careful below)
+// Month to seed, parameterised via env (fork change; upstream hard-codes 2025-09).
+// Defaults to the current UTC month so the demo calendar always has "this month".
+const NOW = new Date();
+const YEAR = Number(process.env.SEED_YEAR ?? NOW.getUTCFullYear());
+const MONTH = Number(process.env.SEED_MONTH ?? NOW.getUTCMonth() + 1); // 1..12
+
+// Mirror the password hashing used by the API auth module
+// (apps/api/src/modules/auth/services/user.service.ts#hashPassword): argon2 with
+// HASH_PEPPER passed as `secret`. Kept identical so the seeded demo user
+// authenticates through the exact same verification path as a real signup.
+const HASH_PEPPER = process.env.HASH_PEPPER
+  ? Buffer.from(process.env.HASH_PEPPER)
+  : undefined;
+
+async function hashPassword(plainPassword: string) {
+  return argon2.hash(plainPassword, { secret: HASH_PEPPER });
+}
 
 function toDate(y: number, m1to12: number, d: number, hours = 7, minutes = 0) {
   // m1to12 is 1..12; JS Date expects 0..11
@@ -47,27 +64,30 @@ function paceToSpeedMps(minutesPerKm: number) {
 }
 
 async function upsertDemoUserAndAthlete() {
+  const hashedPassword = await hashPassword(DEMO_PASSWORD);
   const user = await prisma.user.upsert({
     where: { email: DEMO_EMAIL },
     update: {
-      first_name: DEMO_FIRST_NAME,
-      last_name: DEMO_LAST_NAME,
+      firstName: DEMO_FIRST_NAME,
+      lastName: DEMO_LAST_NAME,
+      // reset the password on every seed so the demo user stays loginable
+      password: hashedPassword,
       // ensure the demo user is also a coach
       roles: { set: ["ATHLETE", "COACH"] },
     },
     create: {
       email: DEMO_EMAIL,
-      password: "demo-hash",
+      password: hashedPassword,
       roles: ["ATHLETE", "COACH"],
-      first_name: DEMO_FIRST_NAME,
-      last_name: DEMO_LAST_NAME,
+      firstName: DEMO_FIRST_NAME,
+      lastName: DEMO_LAST_NAME,
     },
   });
 
   const athlete = await prisma.athlete.upsert({
-    where: { user_id: user.user_id },
+    where: { userId: user.userId },
     update: {},
-    create: { user_id: user.user_id },
+    create: { userId: user.userId },
   });
 
   return { user, athlete };
@@ -89,27 +109,27 @@ async function clearExistingMonth(
 
   const events = await prisma.event.findMany({
     where: {
-      athlete_id: athleteId,
-      start_date: { gte: monthStart, lte: monthEnd },
+      athleteId: athleteId,
+      startDate: { gte: monthStart, lte: monthEnd },
     },
-    select: { event_id: true },
+    select: { eventId: true },
   });
 
   if (events.length === 0) return;
 
-  const eventIds = events.map((e) => e.event_id);
+  const eventIds = events.map((e) => e.eventId);
 
-  await prisma.event_activity.deleteMany({
-    where: { event_id: { in: eventIds } },
+  await prisma.eventActivity.deleteMany({
+    where: { eventId: { in: eventIds } },
   });
-  await prisma.event_training.deleteMany({
-    where: { event_id: { in: eventIds } },
+  await prisma.eventTraining.deleteMany({
+    where: { eventId: { in: eventIds } },
   });
-  await prisma.event_competition.deleteMany({
-    where: { event_id: { in: eventIds } },
+  await prisma.eventCompetition.deleteMany({
+    where: { eventId: { in: eventIds } },
   });
-  await prisma.event_note.deleteMany({ where: { event_id: { in: eventIds } } });
-  await prisma.event.deleteMany({ where: { event_id: { in: eventIds } } });
+  await prisma.eventNote.deleteMany({ where: { eventId: { in: eventIds } } });
+  await prisma.event.deleteMany({ where: { eventId: { in: eventIds } } });
 }
 
 function buildTrainingName(sport: Sport) {
@@ -239,14 +259,14 @@ function buildActivityFromPlan(
     const maxSpeed = avgSpeed * randomFloat(1.2, 1.4);
     return {
       distance: kmToMeters(distKm),
-      elevation_gain:
+      elevationGain:
         sport === "TRAIL_RUNNING" ? randomInt(300, 1100) : randomInt(50, 250),
-      moving_time: movingSec,
-      average_speed: avgSpeed,
-      max_speed: maxSpeed,
-      average_cadence: randomInt(160, 182),
-      average_heartrate: randomInt(130, 164),
-      max_heartrate: randomInt(170, 190),
+      movingTime: movingSec,
+      averageSpeed: avgSpeed,
+      maxSpeed: maxSpeed,
+      averageCadence: randomInt(160, 182),
+      averageHeartrate: randomInt(130, 164),
+      maxHeartrate: randomInt(170, 190),
       sport,
     };
   }
@@ -259,14 +279,14 @@ function buildActivityFromPlan(
     const maxSpeed = avgSpeed * randomFloat(1.3, 1.6);
     return {
       distance: kmToMeters(distKm),
-      elevation_gain: randomInt(200, 1300),
-      moving_time: movingSec,
-      average_speed: avgSpeed,
-      max_speed: maxSpeed,
-      average_cadence: randomInt(70, 92),
-      average_watts: randomInt(140, 280),
-      max_watts: randomInt(550, 900),
-      weighted_average_watts: randomInt(160, 260),
+      elevationGain: randomInt(200, 1300),
+      movingTime: movingSec,
+      averageSpeed: avgSpeed,
+      maxSpeed: maxSpeed,
+      averageCadence: randomInt(70, 92),
+      averageWatts: randomInt(140, 280),
+      maxWatts: randomInt(550, 900),
+      weightedAverageWatts: randomInt(160, 260),
       sport,
     };
   }
@@ -276,10 +296,10 @@ function buildActivityFromPlan(
     const movingSec = Math.round(meters / avgMps);
     return {
       distance: meters,
-      elevation_gain: 0,
-      moving_time: movingSec,
-      average_speed: avgMps,
-      max_speed: avgMps * randomFloat(1.1, 1.25),
+      elevationGain: 0,
+      movingTime: movingSec,
+      averageSpeed: avgMps,
+      maxSpeed: avgMps * randomFloat(1.1, 1.25),
       sport,
     };
   }
@@ -289,10 +309,10 @@ function buildActivityFromPlan(
   const movingSec = randomInt(1800, 4200);
   return {
     distance: meters,
-    elevation_gain: randomInt(0, 50),
-    moving_time: movingSec,
-    average_speed: avgMps,
-    max_speed: avgMps * randomFloat(1.1, 1.3),
+    elevationGain: randomInt(0, 50),
+    movingTime: movingSec,
+    averageSpeed: avgMps,
+    maxSpeed: avgMps * randomFloat(1.1, 1.3),
     sport,
   };
 }
@@ -310,17 +330,17 @@ async function createTrainingEvent(
     data: {
       name: plan.name,
       type: "TRAINING",
-      start_date: start,
-      end_date: end,
-      athlete_id: athleteId,
+      startDate: start,
+      endDate: end,
+      athleteId: athleteId,
       training: {
         create: {
           sport: plan.sport,
           description: "",
-          goal_distance: plan.goalDistanceMeters ?? undefined,
-          goal_duration: plan.goalDurationSec ?? undefined,
-          goal_elevation_gain: plan.goalElevationGain ?? undefined,
-          goal_rpe: randomFloat(0.2, 0.8),
+          goalDistance: plan.goalDistanceMeters ?? undefined,
+          goalDuration: plan.goalDurationSec ?? undefined,
+          goalElevationGain: plan.goalElevationGain ?? undefined,
+          goalRpe: randomFloat(0.2, 0.8),
         },
       },
     },
@@ -343,25 +363,25 @@ async function createCompetitionEvent(
     data: {
       name,
       type: "COMPETITION",
-      start_date: start,
-      end_date: end,
-      athlete_id: athleteId,
+      startDate: start,
+      endDate: end,
+      athleteId: athleteId,
       competition: {
         create: {
           sport,
           description: "A-race objective",
-          goal_distance:
+          goalDistance:
             sport === "RUNNING"
               ? kmToMeters(21.1)
               : sport === "CYCLING"
                 ? kmToMeters(120)
                 : null,
-          goal_duration: null,
-          goal_elevation_gain:
+          goalDuration: null,
+          goalElevationGain:
             sport === "TRAIL_RUNNING"
               ? randomInt(1200, 2500)
               : randomInt(100, 600),
-          goal_rpe: 0.9,
+          goalRpe: 0.9,
         },
       },
     },
@@ -385,25 +405,27 @@ async function createActivityEvent(
     data: {
       name,
       type: "ACTIVITY",
-      start_date: start,
-      end_date: end,
-      athlete_id: athleteId,
+      startDate: start,
+      endDate: end,
+      athleteId: athleteId,
       activity: {
         create: {
           provider: "STRAVA",
-          external_id: `demo-${start.toISOString()}`,
+          // externalId is globally unique, so scope it per athlete to avoid
+          // collisions when several seeded athletes share the same calendar dates.
+          externalId: `demo-${athleteId}-${start.toISOString()}`,
           description: "",
           distance: metrics.distance,
-          elevation_gain: metrics.elevation_gain,
-          moving_time: metrics.moving_time,
-          average_speed: metrics.average_speed,
-          max_speed: metrics.max_speed,
-          average_cadence: metrics.average_cadence ?? null,
-          average_heartrate: metrics.average_heartrate ?? null,
-          max_heartrate: metrics.max_heartrate ?? null,
-          average_watts: metrics.average_watts ?? null,
-          max_watts: metrics.max_watts ?? null,
-          weighted_average_watts: metrics.weighted_average_watts ?? null,
+          elevationGain: metrics.elevationGain,
+          movingTime: metrics.movingTime,
+          averageSpeed: metrics.averageSpeed,
+          maxSpeed: metrics.maxSpeed,
+          averageCadence: metrics.averageCadence ?? null,
+          averageHeartrate: metrics.averageHeartrate ?? null,
+          maxHeartrate: metrics.maxHeartrate ?? null,
+          averageWatts: metrics.averageWatts ?? null,
+          maxWatts: metrics.maxWatts ?? null,
+          weightedAverageWatts: metrics.weightedAverageWatts ?? null,
           sport: metrics.sport,
         },
       },
@@ -412,9 +434,9 @@ async function createActivityEvent(
   });
 
   if (maybeLinkToTrainingEventId) {
-    await prisma.event_training.update({
-      where: { event_id: maybeLinkToTrainingEventId },
-      data: { related_activity_id: activity.activity!.event_activity_id },
+    await prisma.eventTraining.update({
+      where: { eventId: maybeLinkToTrainingEventId },
+      data: { relatedActivityId: activity.activity!.eventActivityId },
     });
   }
 
@@ -453,9 +475,9 @@ async function seedMonthForAthlete(
         data: {
           name: "Rest / Recovery",
           type: "NOTE",
-          start_date: date,
-          end_date: new Date(date.getTime() + 60 * 60 * 1000),
-          athlete_id: athleteId,
+          startDate: date,
+          endDate: new Date(date.getTime() + 60 * 60 * 1000),
+          athleteId: athleteId,
           note: {
             create: {
               description: "Recovery focus: hydration, mobility, sleep",
@@ -492,7 +514,7 @@ async function seedMonthForAthlete(
         athleteId,
         toDate(year, month1to12, day, 18, 0),
         planned,
-        linkIt ? training.event_id : undefined
+        linkIt ? training.eventId : undefined
       );
     }
   }
@@ -504,34 +526,36 @@ async function upsertCoachedAthlete(
   firstName: string,
   lastName: string
 ) {
+  const hashedPassword = await hashPassword(DEMO_PASSWORD);
   const user = await prisma.user.upsert({
     where: { email },
     update: {
-      first_name: firstName,
-      last_name: lastName,
+      firstName: firstName,
+      lastName: lastName,
+      password: hashedPassword,
       roles: { set: ["ATHLETE"] },
     },
     create: {
       email,
-      password: "demo-hash",
+      password: hashedPassword,
       roles: ["ATHLETE"],
-      first_name: firstName,
-      last_name: lastName,
+      firstName: firstName,
+      lastName: lastName,
     },
   });
 
   const athlete = await prisma.athlete.upsert({
-    where: { user_id: user.user_id },
+    where: { userId: user.userId },
     update: {},
-    create: { user_id: user.user_id },
+    create: { userId: user.userId },
   });
 
-  const existingLink = await prisma.coach_athlete.findFirst({
-    where: { user_id: coachUserId, athlete_id: athlete.athlete_id },
+  const existingLink = await prisma.coachAthlete.findFirst({
+    where: { userId: coachUserId, athleteId: athlete.athleteId },
   });
   if (!existingLink) {
-    await prisma.coach_athlete.create({
-      data: { user_id: coachUserId, athlete_id: athlete.athlete_id },
+    await prisma.coachAthlete.create({
+      data: { userId: coachUserId, athleteId: athlete.athleteId },
     });
   }
 
@@ -539,10 +563,17 @@ async function upsertCoachedAthlete(
 }
 
 async function seedAll() {
+  if (process.env.ENV === "production") {
+    throw new Error(
+      "Refusing to seed demo data with ENV=production. " +
+        "seed-demo-month.ts is for local development and CI only.",
+    );
+  }
+
   const { user, athlete } = await upsertDemoUserAndAthlete();
 
   // Seed the demo user's month (September 2025)
-  await seedMonthForAthlete(athlete.athlete_id, YEAR, MONTH);
+  await seedMonthForAthlete(athlete.athleteId, YEAR, MONTH);
 
   // Create a couple of coached athletes and seed September & October 2025 for them
   const coachedSpecs = [
@@ -552,13 +583,13 @@ async function seedAll() {
 
   for (const spec of coachedSpecs) {
     const a = await upsertCoachedAthlete(
-      user.user_id,
+      user.userId,
       spec.email,
       spec.first,
       spec.last
     );
-    await seedMonthForAthlete(a.athlete_id, 2025, 9);
-    await seedMonthForAthlete(a.athlete_id, 2025, 10);
+    await seedMonthForAthlete(a.athleteId, YEAR, MONTH);
+    await seedMonthForAthlete(a.athleteId, YEAR, MONTH + 1);
   }
 }
 
