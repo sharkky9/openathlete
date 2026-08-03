@@ -183,7 +183,7 @@ export class UserService {
         password: hashedPassword,
         firstName: firstName,
         lastName: lastName,
-        roles: [UserRole.ATHLETE, UserRole.COACH],
+        roles: [UserRole.ATHLETE],
         athlete: {
           create: {
             trainingZones: {
@@ -341,10 +341,13 @@ export class UserService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Update user roles, gender, and mark onboarding as completed
+    // Update user roles, gender, and mark onboarding as completed.
+    // The onboarding selection is authoritative: roles the user did not select
+    // are removed as well as added.
     await this.prisma.user.update({
       where: { userId: user.userId },
       data: {
+        roles: data.roles as UserRole[],
         gender: data.gender as Gender | undefined,
         onboardingCompleted: true,
       },

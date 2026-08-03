@@ -172,3 +172,32 @@ the user model and wires it up here.
 **Upgrade test:** load any authenticated page and confirm
 `performance.getEntriesByType('resource')` contains no `/avatars/shadcn.jpg` entry while the
 initials still render in the sidebar and in the user dropdown.
+
+## Onboarding role selection is authoritative
+
+**Reason:** registration hard-coded `roles: [ATHLETE, COACH]` and `completeOnboarding` never wrote
+`roles`, so a user who selected only "athlete" during onboarding still ended up with both roles and
+saw the coach space (issue #12).
+
+**Implementation:** `createAccount` seeds `[ATHLETE]` only (an athlete record with default training
+zones is created for every account, so a not-yet-onboarded user still has a usable space);
+`completeOnboarding` writes `data.roles`, which both adds and removes roles. On the web,
+`SpaceProvider` falls back to a role the user actually holds when the space stored in local storage
+is not one of them, and `SpaceSwitcher` only forces the athlete space for a coach without athletes
+when the user has the `ATHLETE` role. `OnboardingView` pre-selects the coach role when the account
+already coaches an athlete (it signed up from a coach invitation), so the confirmed selection matches
+reality. No data migration: existing accounts keep the roles they have.
+
+**Upstream modifications:** `apps/api/src/modules/auth/services/user.service.ts`,
+`apps/web/src/contexts/space/context/space-provider.tsx`,
+`apps/web/src/components/sidebar/space-switcher.tsx`,
+`apps/web/src/views/dashboard/onboarding/onboarding-view.tsx`.
+
+**Upstream candidate:** yes — it is a straight bug fix with no fork-specific behaviour.
+
+**Removal condition:** upstream stops pre-assigning roles at registration and persists the
+onboarding selection; then take upstream's version.
+
+**Upgrade test:** sign up three accounts and complete onboarding selecting athlete only, coach only
+and both; `GET /user/me` must return exactly the selected roles, and the athlete-only account must
+see no coach space.
