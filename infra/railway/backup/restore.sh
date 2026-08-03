@@ -54,7 +54,9 @@ KEY="${BACKUP_KEY:-$(s3 GET "/${PREFIX}/latest")}"
 echo "Restoring s3://${BUCKET_NAME}/${KEY}"
 s3 GET "/${KEY}" --output /tmp/restore.dump
 
-pg_restore --clean --if-exists --no-owner --no-privileges \
+# --exit-on-error: pg_restore otherwise ignores failed statements and still exits 0,
+# which would report a half-loaded database as a clean restore.
+pg_restore --clean --if-exists --exit-on-error --no-owner --no-privileges \
   --dbname="$TARGET_DATABASE_URL" /tmp/restore.dump
 rm -f /tmp/restore.dump
 
