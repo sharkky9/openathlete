@@ -63,6 +63,7 @@ export const useTrainingLoadByPeriod = (
       endDate.toISOString(),
       athleteId,
     ],
+    enabled: athleteId !== undefined,
   });
 
 export const useTrainingLoadMetrics = (
@@ -87,6 +88,7 @@ export const useTrainingLoadMetrics = (
       targetDate?.toISOString(),
       athleteId,
     ],
+    enabled: athleteId !== undefined,
   });
 
 export const useTrainingLoadHistory = (
@@ -114,6 +116,7 @@ export const useTrainingLoadHistory = (
       endDate.toISOString(),
       athleteId,
     ],
+    enabled: athleteId !== undefined,
   });
 
 export const useWeeklyLoadSummaryQuery = (

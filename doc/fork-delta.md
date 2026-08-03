@@ -151,6 +151,7 @@ clean.
 
 **Upgrade test:** none; verify required check names in the ruleset still match workflow job names
 after an upgrade renames any upstream job.
+
 ## Sidebar avatar no longer requests the shadcn demo asset
 
 **Reason:** `NavUser` rendered `AvatarImage src="/avatars/shadcn.jpg"` in two places. That asset does
@@ -201,3 +202,31 @@ onboarding selection; then take upstream's version.
 **Upgrade test:** sign up three accounts and complete onboarding selecting athlete only, coach only
 and both; `GET /user/me` must return exactly the selected roles, and the athlete-only account must
 see no coach space.
+
+## Athlete-scoped queries wait for the athlete id
+
+**Reason:** the dashboard mounted its metric and training-load queries before the athlete had
+loaded, so each endpoint was requested once without `athleteId` — which the API rejects with `400`,
+because those handlers parse the query parameter with a non-optional `ParseIntPipe` — and once again
+successfully after the athlete resolved. Double load on those endpoints and a stream of false `400`s
+in error monitoring.
+
+**Implementation:** `enabled: athleteId !== undefined` on the athlete-scoped queries in
+`apps/web/src/api/metric/metric.hooks.ts` and `apps/web/src/api/training-load/training-load.hooks.ts`
+(their query keys already contain `athleteId`, so they run as soon as it arrives), and
+`apps/web/src/views/dashboard/calendar-view.tsx` only mounts the dashboard header once the athlete
+is known, so the header shows its skeletons instead of an empty state while the athlete loads.
+
+**Upstream modifications:** `apps/web/src/api/metric/metric.hooks.ts`,
+`apps/web/src/api/training-load/training-load.hooks.ts`,
+`apps/web/src/views/dashboard/calendar-view.tsx`.
+
+**Upstream candidate:** yes — a plain bug fix with no fork-specific behaviour; it follows the
+`enabled` guard upstream already uses in `useWeeklyLoadSummaryQuery`.
+
+**Removal condition:** upstream applies the same guard (or makes `athleteId` genuinely optional on
+the API side); then take upstream's version.
+
+**Upgrade test:** log in as an athlete, load the dashboard and the calendar, and check in the
+Network tab that `/metric`, `/metric/latest` and `/training-load/metrics` are each requested once
+with a `200` and no preceding `400`.

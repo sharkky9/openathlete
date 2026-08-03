@@ -20,6 +20,7 @@ export const useGetMetricsQuery = (
     ...opt,
     queryKey: [metricKeys.getMetrics, type, athleteId],
     queryFn: () => MetricAPI.getMetrics(type, athleteId),
+    enabled: athleteId !== undefined,
   });
 };
 
@@ -31,6 +32,7 @@ export const useGetLatestMetricsQuery = (
     ...opt,
     queryKey: [metricKeys.getLatestMetrics, athleteId],
     queryFn: () => MetricAPI.getLatestMetrics(athleteId),
+    enabled: athleteId !== undefined,
   });
 };
 
@@ -43,6 +45,7 @@ export const useGetMetricHistoryQuery = (
     ...opt,
     queryKey: [metricKeys.getMetricHistory, type, athleteId],
     queryFn: () => MetricAPI.getMetricHistory(type, athleteId),
+    enabled: athleteId !== undefined,
   });
 };
 
@@ -55,6 +58,7 @@ export const useCalculateMetricQuery = (
     ...opt,
     queryKey: [metricKeys.calculateMetric, type, athleteId],
     queryFn: () => MetricAPI.calculateMetric(type, athleteId),
+    enabled: athleteId !== undefined,
   });
 };
 
