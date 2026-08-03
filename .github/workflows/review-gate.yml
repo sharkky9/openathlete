@@ -1,9 +1,14 @@
 name: Review gate
 
 # Blocks merging while Devin Review still has unresolved findings on a pull
-# request. GitHub emits no event when a review thread is resolved, so the gate
-# also runs on a schedule and reports its verdict as the `Devin Review findings`
-# commit status, which is a required status check on main.
+# request, reporting its verdict as the `Devin Review findings` commit status,
+# which is a required status check on main.
+#
+# GitHub Actions has no trigger for a review thread being resolved (the
+# pull_request_review_thread webhook is not a workflow event), so on top of the
+# pull request and review events the gate re-evaluates open pull requests on a
+# schedule. Anything that resolves a thread can skip the wait by re-posting the
+# status itself via POST /repos/{repo}/statuses/{sha}.
 
 on:
   # pull_request_target rather than pull_request: a fork-triggered pull_request run
@@ -11,6 +16,8 @@ on:
   # checked out or executed here.
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
   pull_request_review_comment:
     types: [created, edited, deleted]
   schedule:
