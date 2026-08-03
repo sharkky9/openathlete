@@ -1,4 +1,4 @@
-import { ConsoleLogger, LoggerService } from '@nestjs/common';
+import { ConsoleLogger, LogLevel, LoggerService } from '@nestjs/common';
 
 import { resolveBetterStackLogConfig } from './better-stack.config';
 import {
@@ -7,9 +7,10 @@ import {
 } from './better-stack.shipper';
 
 /**
- * Console logger that also ships every log record to Better Stack. Console
- * output is kept so platform logs (Railway, Docker) stay complete even when
- * ingestion is unavailable.
+ * Console logger that also ships log records to Better Stack. Console output is
+ * kept so platform logs (Railway, Docker) stay complete even when ingestion is
+ * unavailable, and only records the console itself emits are shipped: a level
+ * disabled locally is never sent to a third party either.
  */
 export class BetterStackLogger extends ConsoleLogger {
   constructor(private readonly shipper: BetterStackLogShipper) {
@@ -18,39 +19,44 @@ export class BetterStackLogger extends ConsoleLogger {
 
   log(message: unknown, ...optionalParams: unknown[]): void {
     super.log(message, ...optionalParams);
-    this.ship('info', message, optionalParams);
+    this.ship('info', 'log', message, optionalParams);
   }
 
   warn(message: unknown, ...optionalParams: unknown[]): void {
     super.warn(message, ...optionalParams);
-    this.ship('warn', message, optionalParams);
+    this.ship('warn', 'warn', message, optionalParams);
   }
 
   error(message: unknown, ...optionalParams: unknown[]): void {
     super.error(message, ...optionalParams);
-    this.ship('error', message, optionalParams);
+    this.ship('error', 'error', message, optionalParams);
   }
 
   debug(message: unknown, ...optionalParams: unknown[]): void {
     super.debug(message, ...optionalParams);
-    this.ship('debug', message, optionalParams);
+    this.ship('debug', 'debug', message, optionalParams);
   }
 
   verbose(message: unknown, ...optionalParams: unknown[]): void {
     super.verbose(message, ...optionalParams);
-    this.ship('trace', message, optionalParams);
+    this.ship('trace', 'verbose', message, optionalParams);
   }
 
   fatal(message: unknown, ...optionalParams: unknown[]): void {
     super.fatal(message, ...optionalParams);
-    this.ship('fatal', message, optionalParams);
+    this.ship('fatal', 'fatal', message, optionalParams);
   }
 
   private ship(
     level: BetterStackLevel,
+    nestLevel: LogLevel,
     message: unknown,
     optionalParams: unknown[],
   ): void {
+    if (!this.isLevelEnabled(nestLevel)) {
+      return;
+    }
+
     // Nest passes the context as the last argument and, for errors, a stack
     // trace as the first optional argument.
     const params = [...optionalParams];

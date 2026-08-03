@@ -38,7 +38,10 @@ Implementation: `apps/api/src/modules/health/*`, `apps/web/nginx.conf`.
 
 `apps/api/src/common/logging/*` installs a Nest logger that writes to stdout **and** batches
 records to the Better Stack HTTP ingestion API (batches of up to 100 events, flushed every 2 s,
-flushed again on `SIGTERM`/`SIGINT`). Ingestion failures are dropped with a single warning —
+flushed again on `SIGTERM`/`SIGINT`, where the drain is capped at 3 s so it cannot delay a
+restart). Only records the console logger itself emits are shipped, so a log level disabled
+locally (`debug`/`verbose` in production) is never sent to Better Stack either. Ingestion
+failures are dropped with a single warning —
 logging can never take the API down. When no credentials are resolved, Nest's default console
 logger is used and nothing else changes.
 

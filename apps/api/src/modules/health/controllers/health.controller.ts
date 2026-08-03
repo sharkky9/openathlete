@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { HealthService, PublicReadiness } from './services/health.service';
+import { HealthService, PublicReadiness } from '../services/health.service';
 
 @ApiTags('Health')
 @Controller('health')

@@ -22,6 +22,9 @@ const FLUSH_INTERVAL_MS = 2000;
 const MAX_BATCH_SIZE = 100;
 const MAX_BUFFER_SIZE = 1000;
 const REQUEST_TIMEOUT_MS = 5000;
+// Platforms give a short stop grace (Docker defaults to 10s) before SIGKILL, so
+// the shutdown drain gives up well inside it rather than delaying the restart.
+const SHUTDOWN_DEADLINE_MS = 3000;
 const TERMINATION_SIGNALS: NodeJS.Signals[] = ['SIGTERM', 'SIGINT'];
 
 /**
@@ -76,9 +79,14 @@ export class BetterStackLogShipper {
     // buffer as fast as it drains and stall the shutdown.
     this.stopped = true;
 
-    // flush() sends at most one batch, so drain what is buffered: the records
-    // written right before a redeploy are the interesting ones. Bounded so an
-    // unreachable ingestion host cannot hold the process past its grace period.
+    // Drain what is buffered — the records written right before a redeploy are
+    // the interesting ones — but never past the deadline: with an unreachable
+    // ingestion host every batch would otherwise burn the full request timeout.
+    await Promise.race([this.drain(), sleep(SHUTDOWN_DEADLINE_MS)]);
+  }
+
+  private async drain(): Promise<void> {
+    // flush() sends at most one batch.
     const maxBatches = Math.ceil(MAX_BUFFER_SIZE / MAX_BATCH_SIZE);
     for (let i = 0; i < maxBatches && this.buffer.length > 0; i += 1) {
       await this.flush();
@@ -148,4 +156,10 @@ export class BetterStackLogShipper {
       }
     }
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms).unref();
+  });
 }
