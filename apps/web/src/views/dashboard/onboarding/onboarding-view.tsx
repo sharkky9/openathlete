@@ -1,4 +1,7 @@
-import { useGetMyCoachesQuery } from '@/api/athlete';
+import {
+  useGetMyCoachedAthletesQuery,
+  useGetMyCoachesQuery,
+} from '@/api/athlete';
 import { useCompleteOnboardingMutation, useGetMeQuery } from '@/api/user';
 import logoDarkSrc from '@/assets/logos/logo_dark.svg';
 import logoWhiteSrc from '@/assets/logos/logo_white.svg';
@@ -134,6 +137,24 @@ export function OnboardingView() {
   });
   const { data: coaches } = useGetMyCoachesQuery();
   const hasCoach = (coaches?.length ?? 0) > 0;
+  const { data: coachedAthletes } = useGetMyCoachedAthletesQuery();
+  const coachesAthletes = (coachedAthletes?.length ?? 0) > 0;
+
+  // A user who signed up from a coach invitation already coaches an athlete:
+  // pre-select the coach role so the selection they confirm matches reality.
+  // Only on a fresh onboarding, so a deliberate deselection is not undone.
+  const hadStoredData = useRef(loadOnboardingData() !== null);
+  const coachRoleSeeded = useRef(false);
+
+  useEffect(() => {
+    if (hadStoredData.current || coachRoleSeeded.current || !coachesAthletes) {
+      return;
+    }
+    coachRoleSeeded.current = true;
+    setData((d) =>
+      d.roles.includes('COACH') ? d : { ...d, roles: [...d.roles, 'COACH'] },
+    );
+  }, [coachesAthletes]);
 
   const onboardingFinishedRef = useRef(false);
   const onboardingSnapshotRef = useRef<{

@@ -150,11 +150,14 @@ zones is created for every account, so a not-yet-onboarded user still has a usab
 `completeOnboarding` writes `data.roles`, which both adds and removes roles. On the web,
 `SpaceProvider` falls back to a role the user actually holds when the space stored in local storage
 is not one of them, and `SpaceSwitcher` only forces the athlete space for a coach without athletes
-when the user has the `ATHLETE` role. No data migration: existing accounts keep the roles they have.
+when the user has the `ATHLETE` role. `OnboardingView` pre-selects the coach role when the account
+already coaches an athlete (it signed up from a coach invitation), so the confirmed selection matches
+reality. No data migration: existing accounts keep the roles they have.
 
 **Upstream modifications:** `apps/api/src/modules/auth/services/user.service.ts`,
 `apps/web/src/contexts/space/context/space-provider.tsx`,
-`apps/web/src/components/sidebar/space-switcher.tsx`.
+`apps/web/src/components/sidebar/space-switcher.tsx`,
+`apps/web/src/views/dashboard/onboarding/onboarding-view.tsx`.
 
 **Upstream candidate:** yes — it is a straight bug fix with no fork-specific behaviour.
 
