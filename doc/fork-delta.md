@@ -7,9 +7,9 @@ changes the delta.
 Last reconciled against upstream `main` at `64a660bb`.
 
 Files this fork adds in its own directories (`infra/railway/**`, `doc/fork-*.md`,
-`doc/merge-policy.md`, `.github/workflows/auto-merge.yml`, `.github/workflows/review-gate.yml`,
-`.github/workflows/deployment-smoke.yml`) cannot conflict and are described below only where their
-behaviour matters during an upgrade.
+`doc/merge-policy.md`, `doc/integration-strategy.md`, `.github/workflows/auto-merge.yml`,
+`.github/workflows/review-gate.yml`, `.github/workflows/deployment-smoke.yml`) cannot conflict and
+are described below only where their behaviour matters during an upgrade.
 
 ## Railway deployment configuration
 
@@ -134,6 +134,28 @@ sides' keys.
 **Upgrade test:** `pnpm check:locale-parity`, then load the Messages page and the Statistics chart
 in English and in French and confirm the filter labels, thread count and chart axis follow the
 switcher.
+
+## Third-party integration strategy document
+
+**Reason:** upstream ships integrations for eleven third-party services. This fork runs one user and
+has to decide, per integration, whether to configure it, leave it dormant, guard it off or drop it —
+a decision that is as much a fork-maintenance choice as a product one.
+
+**Implementation:** `doc/integration-strategy.md` — per-integration analysis and a decision table.
+Documentation only; it changes no code, no configuration and no behaviour, and its recommendations
+are not applied.
+
+**Upstream modifications:** none.
+
+**Upstream candidate:** no — the conclusions are specific to this fork's single-user deployment.
+Several of the fixes it recommends are upstream candidates in their own right and are marked as such
+in the document.
+
+**Removal condition:** the decision table has been fully actioned and each resulting change is
+recorded in its own entry here; the document then becomes history rather than a plan.
+
+**Upgrade test:** none. On an upstream integration, re-check the `file:line` references the document
+cites; stale references mean the analysis behind a still-open decision needs re-verifying.
 
 ## Merge policy automation
 
