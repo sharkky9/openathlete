@@ -1,3 +1,4 @@
+import { useUserRoles } from '@/contexts/auth';
 import { getPath } from '@/routes/paths';
 import { CURRENT_SPACE, getItem, setItem } from '@/utils/local-storage';
 import { useCallback, useMemo, useState } from 'react';
@@ -13,11 +14,19 @@ type Props = {
 };
 
 export function SpaceProvider({ children }: Props) {
+  const roles = useUserRoles();
   const [currentSpace, setCurrentSpace] = useState<UserRole>(() => {
     const storedSpace = getItem(CURRENT_SPACE);
     return storedSpace ? (storedSpace as UserRole) : 'ATHLETE';
   });
   const nav = useNavigate();
+
+  // A user only holds the roles they selected during onboarding, so fall back
+  // to a space they actually have when the stored one is not available.
+  const space =
+    !roles || roles.length === 0 || roles.includes(currentSpace)
+      ? currentSpace
+      : roles[0];
 
   const handleSpaceChange = useCallback(
     (space: UserRole) => {
@@ -34,10 +43,10 @@ export function SpaceProvider({ children }: Props) {
 
   const memoizedValue = useMemo<SpaceContextType>(
     () => ({
-      space: currentSpace,
+      space,
       setSpace: handleSpaceChange,
     }),
-    [currentSpace, handleSpaceChange],
+    [space, handleSpaceChange],
   );
 
   return (

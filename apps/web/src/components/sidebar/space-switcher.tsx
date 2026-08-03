@@ -62,7 +62,11 @@ export function SpaceSwitcher() {
   const hasNoAthletes = coachedAthletes?.length === 0;
 
   React.useEffect(() => {
-    if (activeSpace?.role === 'COACH' && hasNoAthletes) {
+    if (
+      activeSpace?.role === 'COACH' &&
+      hasNoAthletes &&
+      roles?.includes('ATHLETE')
+    ) {
       setSpace('ATHLETE');
     }
 
@@ -90,7 +94,7 @@ export function SpaceSwitcher() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [spaces, setSpace, activeSpace, hasNoAthletes]);
+  }, [spaces, setSpace, activeSpace, hasNoAthletes, roles]);
   if (!activeSpace || spaces.length <= 1 || hasNoAthletes) {
     return null;
   }
