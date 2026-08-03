@@ -20,6 +20,9 @@ on:
     types: [submitted, edited, dismissed]
   pull_request_review_comment:
     types: [created, edited, deleted]
+  # Fires when Devin Review publishes its own `Devin Review` status, which is what
+  # lifts this gate out of its pending state.
+  status:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
@@ -51,7 +54,7 @@ jobs:
           if [ -n "${EVENT_PR:-}" ]; then
             prs="$EVENT_PR"
           else
-            prs=$(gh pr list --repo "$REPO" --state open --json number --jq '.[].number')
+            prs=$(gh pr list --repo "$REPO" --state open --limit 200 --json number --jq '.[].number')
           fi
 
           for pr in $prs; do
@@ -80,7 +83,16 @@ jobs:
               | select(.comments.nodes[0].author.login == "devin-ai-integration")]
               | length' pages.json)
 
-            if [ "$open_findings" -eq 0 ]; then
+            # Fail closed: until Devin Review has finished on this exact commit there is
+            # no finding to count, and reporting success would let the PR merge in that
+            # window.
+            review_state=$(gh api "repos/$REPO/commits/$sha/status" \
+              --jq '[.statuses[] | select(.context == "Devin Review")] | last | .state // "missing"')
+
+            if [ "$review_state" != "success" ]; then
+              state=pending
+              description="Waiting for Devin Review to finish this commit"
+            elif [ "$open_findings" -eq 0 ]; then
               state=success
               description="No unresolved Devin Review findings"
             else
