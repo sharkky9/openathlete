@@ -47,6 +47,18 @@ Firebase) carries a two-line `ARG`/`ENV` addition in `apps/web/Dockerfile` — w
 that file is *already* a fork-modified file (`doc/fork-delta.md`, "Web container renders nginx.conf
 at startup"), so it extends an existing delta rather than opening a new one.
 
+**"Placeholder" may not be true of every environment.**
+[#31](https://github.com/sharkky9/openathlete/issues/31) reports that `staging` was duplicated from
+`production` and that PR previews inherit `staging`'s variables, so `BREVO_API_KEY`,
+`OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `STRAVA_CLIENT_SECRET`, `STRAVA_WEBHOOK_TOKEN`,
+`POLAR_CLIENT_SECRET` and `POLAR_WEBHOOK_SECRET_KEY` are byte-identical across all three. This
+analysis reads the *code*; it has no Railway access and cannot confirm which of those values are
+real. Two consequences. Wherever this document says "harmless while the value is a placeholder" —
+the Strava webhook token in the logs most of all — that qualifier does not hold on any environment
+whose value is real. And every "Configure" row below should be read as *configure per environment,
+with distinct credentials*, which is what `infra/railway/variables.env.example` already tells the
+reader to do. Row 21 of the decision table carries this.
+
 ---
 
 ## Strava
@@ -128,11 +140,20 @@ keep compiling on every upstream integration, which is free as long as we change
 (`api.environment.ts:130-146`), currently unset. UI: Suunto tile in the connectors list.
 
 **With a placeholder today.** Visibly broken in the same way as Garmin: a tile that fails when
-clicked. The webhook resolves an account and no-ops.
+clicked. The webhook resolves an account and no-ops — but it is the *worst-behaved* of the dormant
+webhooks, and worth stating precisely. Suunto's documented `X-HMAC-SHA256-Signature` is never
+checked at all, and when the payload resolves no account by user id the handler falls back to
+**trying the supplied `workoutKey` against every active Suunto account in turn**
+(`suunto.provider.service.ts:1047-1099`). Once even one Suunto account exists, an unauthenticated
+POST fans out one outbound Suunto API call per account. The requests go to a fixed vendor host with
+a validated key, so this is amplification and account probing, not SSRF.
 
-**Recommendation: Dormant.** No hardware, no reason. Nothing to do; this is the status quo.
+**Recommendation: Dormant — and covered by the same webhook guard as Polar.** No hardware, no
+reason to configure it. The fan-out is unreachable today (no accounts), so it is not urgent; it is a
+reason for Suunto to be on the disabled-route list rather than merely unconfigured. If Suunto is
+ever enabled, verify the HMAC *before* the account lookup, not after.
 
-**Ongoing cost.** €0, zero conflict surface.
+**Ongoing cost.** €0, zero conflict surface while dormant.
 
 ---
 
@@ -609,7 +630,8 @@ not be.
 ## Decision table
 
 Each row is a proposal for the owner to approve, reject or amend. Each approved row becomes a
-follow-up issue.
+follow-up issue. Rows 1-20 are the integrations themselves; rows 21-22 are the two adjacent
+decisions this analysis surfaced.
 
 | # | Integration | Recommended disposition | Mechanics | Money | Fork delta |
 | --- | --- | --- | --- | --- | --- |
@@ -633,6 +655,8 @@ follow-up issue.
 | 18 | **OpenAI** | **Dormant**, unless AI wanted | if wanted: set `OPENAI_API_KEY` with a spend cap | ~€ single digits/mo | none |
 | 19 | **Plan gating for AI** | **Data change**, only with row 18 | `UPDATE subscription SET plan='ATHLETE_PRO', status='active' WHERE user_id=…` | — | **none** |
 | 20 | **Google Generative AI** | **Dormant**, unless AI wanted | if wanted: set `GOOGLE_GENERATIVE_AI_API_KEY` (free tier) and pin `AI_MODEL_POST_ACTIVITY_FEEDBACK` to a stable model | €0 | none |
+| 21 | **Non-production credential scoping** | **Fix** | give staging and PR previews their own credentials, or none — see [#31](https://github.com/sharkky9/openathlete/issues/31) | €0 | none (Railway variables) |
+| 22 | *Intervals.icu* | **Investigate separately** | not an existing integration; personal API keys would suit a single user better than partner APIs. Discovery issue, not a row to approve here | — | — |
 
 Rows 2, 4, 5, 11, 12, 13, 14 are the ones that touch code. Everything else is a Railway variable, a
 database row, or nothing at all.
@@ -662,7 +686,7 @@ web build, and `STRAVA_WEBHOOK_TOKEN` being written to the logs on every webhook
 Ranked by conflict risk, the recommended disposals are overwhelmingly at the cheap end:
 
 - **Configuration only, no delta (rows 1, 3, 6, 7, 8, 9, 15, 16, 18, 19, 20)** — eleven of the
-  twenty rows are a Railway variable or a database row and touch no file at all.
+  twenty-two rows are a Railway variable or a database row and touch no file at all.
 - **Configuration plus a Dockerfile declaration (row 10)** — Stripe, the integration the issue
   worried about most, disposes of through `VITE_DISABLE_PAYMENTS`, upstream's own flag, at the cost
   of two lines in `apps/web/Dockerfile`, a file this fork already patches.
