@@ -187,7 +187,9 @@ zones is created for every account, so a not-yet-onboarded user still has a usab
 is not one of them, and `SpaceSwitcher` only forces the athlete space for a coach without athletes
 when the user has the `ATHLETE` role. `OnboardingView` pre-selects the coach role when the account
 already coaches an athlete (it signed up from a coach invitation), so the confirmed selection matches
-reality. No data migration: existing accounts keep the roles they have.
+reality; an `openathlete_onboarding_coach_seeded` local-storage marker keeps that pre-selection to
+once per browser, so deselecting it survives a reload. No data migration: existing accounts keep the
+roles they have.
 
 **Upstream modifications:** `apps/api/src/modules/auth/services/user.service.ts`,
 `apps/web/src/contexts/space/context/space-provider.tsx`,
