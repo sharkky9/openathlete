@@ -7,9 +7,9 @@ changes the delta.
 Last reconciled against upstream `main` at `64a660bb`.
 
 Files this fork adds in its own directories (`infra/railway/**`, `doc/fork-*.md`,
-`doc/merge-policy.md`, `.github/workflows/auto-merge.yml`, `.github/workflows/review-gate.yml`,
-`.github/workflows/deployment-smoke.yml`) cannot conflict and are described below only where their
-behaviour matters during an upgrade.
+`doc/merge-policy.md`, `docs/testing-and-staging-strategy.md`, `.github/workflows/auto-merge.yml`,
+`.github/workflows/review-gate.yml`, `.github/workflows/deployment-smoke.yml`) cannot conflict and
+are described below only where their behaviour matters during an upgrade.
 
 ## Railway deployment configuration
 

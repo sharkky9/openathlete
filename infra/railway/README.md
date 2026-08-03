@@ -3,15 +3,20 @@
 Deployment configuration for running this fork of OpenAthlete on [Railway](https://railway.com).
 Everything in this directory is deployment packaging only — no application behaviour is changed.
 
-## Deployed environment
+## Environments
 
-| Environment | Service | URL                                        |
-| ----------- | ------- | ------------------------------------------ |
-| production  | `web`   | https://ultracully.up.railway.app          |
-| production  | `api`   | https://ultracully-api.up.railway.app      |
+Verified against the Railway API on 2026-08-03. The project (`openathlete`) runs three kinds of
+environment:
 
-The Railway-generated subdomains were renamed to `ultracully*`; renaming the `api` domain requires a
-`web` rebuild because `VITE_API_BASE_URL` is baked in at build time.
+| Environment | Kind | Services | Web / API URL |
+| --- | --- | --- | --- |
+| `production` | persistent | `web`, `api`, `postgres`, `redis`, `backup` | `ultracully.up.railway.app` / `ultracully-api.up.railway.app` |
+| `staging` | persistent (tracks `main`) | `web`, `api`, `postgres`, `redis` | Railway-generated `*.up.railway.app` (see the Railway dashboard / the PR's `railway-app` deploy comment) |
+| `openathlete-pr-<N>` | ephemeral (one per open PR) | `web`, `api`, `postgres`, `redis` | Railway-generated per-PR `*.up.railway.app` |
+
+The `backup` service exists **only** in `production`; `staging` and previews do not run it. The
+production subdomains were renamed to `ultracully*`; renaming the `api` domain requires a `web`
+rebuild because `VITE_API_BASE_URL` is baked in at build time (see Networking below).
 
 ## Service topology (per environment)
 
@@ -21,7 +26,7 @@ The Railway-generated subdomains were renamed to `ultracully*`; renaming the `ap
 | `redis`         | Docker image `redis:7-alpine`               | no     | Volume at `/data`; used for BullMQ queues and the Socket.IO adapter |
 | `api`           | This repo, `apps/api/Dockerfile`            | yes    | Runs `prisma migrate deploy` on boot, then the NestJS server; health check on `/health` |
 | `web`           | This repo, `apps/web/Dockerfile`            | yes    | nginx serving the built SPA on port `80`            |
-| `backup`        | This repo, `infra/railway/backup/Dockerfile` | no    | Daily cron: dumps Postgres to the project bucket. See `BACKUP-RESTORE.md` |
+| `backup`        | This repo, `infra/railway/backup/Dockerfile` | no    | **`production` only** — daily cron that dumps Postgres to the project bucket. See `BACKUP-RESTORE.md` |
 
 The API and web services read their build/deploy settings from config as code:
 
@@ -73,9 +78,20 @@ every deployment migrates the database it is pointed at. No manual step is requi
 
 ## Pull request previews
 
-PR environments are enabled on the `staging` environment, so previews inherit staging (non-production)
-variables and get their own Postgres and Redis instances. Production variables are never exposed to a
-preview. Railway destroys the environment when the PR is merged or closed.
+**Verified against the Railway API on 2026-08-03.** PR preview environments are enabled
+(`prDeploys` + `botPrEnvironments`) with `staging` as the base, so **every** pull request — Devin's
+included — gets an ephemeral `openathlete-pr-<N>` environment. Each preview builds its own `web` and
+`api` images (the `web` build bakes in `VITE_API_BASE_URL` for that environment's api domain) and
+gets its own **empty** Postgres and Redis volumes; `prisma migrate deploy` creates the schema on
+first boot, so previews start with no data. Railway destroys the environment when the PR is merged
+or closed (observed: an `openathlete-pr-5` preview was auto-torn-down on close).
+
+> **Caveat — previews are not fully isolated from production secrets.** Previews inherit `staging`'s
+> variables, and `staging` was duplicated from `production` without resetting every integration
+> secret. `HASH_PEPPER` and `JWT_SECRET_KEY` were regenerated, but `BREVO_API_KEY`, `OPENAI_API_KEY`,
+> `GOOGLE_GENERATIVE_AI_API_KEY` and the Strava/Polar client secrets and webhook tokens are still
+> the production values. Until that is fixed, a preview can reach those real third-party accounts.
+> See `../../docs/testing-and-staging-strategy.md` (the finding at the top) and its tracking issue.
 
 ## Related docs
 
