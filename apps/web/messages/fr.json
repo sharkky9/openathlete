@@ -974,5 +974,12 @@
   "messages_thread_fallback_title": "Discussion {threadId}",
   "messages_message_edited": "édité",
   "messages_no_messages": "Aucun message",
-  "messages_start_conversation": "Commencez la conversation"
+  "messages_start_conversation": "Commencez la conversation",
+  "invalid_email_address": "Saisissez une adresse e-mail valide",
+  "min_characters": "Doit contenir au moins {count} caractères",
+  "incorrect_email_or_password": "E-mail ou mot de passe incorrect",
+  "login_failed_try_again": "La connexion a échoué, veuillez réessayer",
+  "email_already_registered": "Un compte existe déjà avec cette adresse e-mail",
+  "account_creation_failed": "La création du compte a échoué, veuillez réessayer",
+  "account_created_but_login_failed": "Votre compte a été créé mais la connexion a échoué. Veuillez vous connecter."
 }

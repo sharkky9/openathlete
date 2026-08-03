@@ -974,5 +974,12 @@
   "messages_thread_fallback_title": "Thread {threadId}",
   "messages_message_edited": "edited",
   "messages_no_messages": "No messages",
-  "messages_start_conversation": "Start the conversation"
+  "messages_start_conversation": "Start the conversation",
+  "invalid_email_address": "Enter a valid email address",
+  "min_characters": "Must be at least {count} characters",
+  "incorrect_email_or_password": "Incorrect email or password",
+  "login_failed_try_again": "Login failed, please try again",
+  "email_already_registered": "An account already exists with this email address",
+  "account_creation_failed": "Account creation failed, please try again",
+  "account_created_but_login_failed": "Your account was created but we could not sign you in. Please log in."
 }

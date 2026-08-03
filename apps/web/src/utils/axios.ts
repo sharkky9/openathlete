@@ -243,9 +243,8 @@ client.interceptors.response.use(undefined, async (error) => {
     localStorage.removeItem(REFRESH_TOKEN);
     const queryClient = new QueryClient();
     queryClient.clear();
-  } else {
-    throw error;
   }
+  throw error;
 });
 
 export default client;
