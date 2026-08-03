@@ -263,3 +263,151 @@ upstream and drop this entry once it is merged there.
 **Upgrade test:** on the upgraded branch, submit the signup form with `not-an-email` and a
 2-character password (inline errors on both fields), sign up with an already-registered email
 (error toast), and log in with a wrong password ("Incorrect email or password", button not stuck).
+
+## Runnable Jest suite and `apps/api` `test` script
+
+**Reason:** `apps/api` ships a full Jest setup (`ts-jest`, `supertest`, `@nestjs/testing`,
+`testRegex: .*\.spec\.ts$`) but no `test` script, so `CONTRIBUTING.md`'s `cd apps/api && pnpm test`
+fails and the repo has zero tests. Issue #24, item 1.
+
+**Implementation:** `test`, `test:watch` and `test:cov` scripts in `apps/api/package.json`; one real
+spec, `apps/api/src/modules/core/helpers/activity-stream.spec.ts`, pinning the activity-stream
+compression round-trip and on-disk encoding shape. A fork-owned workflow `.github/workflows/tests.yml`
+runs `pnpm api test` on every push/PR to `main`.
+
+**Upstream modifications:** `apps/api/package.json` (scripts only). The spec lives in an
+upstream-owned directory but is an added file, so it cannot conflict.
+
+**Upstream candidate:** yes — the missing script is an upstream bug; upstream should want both the
+script and the spec.
+
+**Removal condition:** upstream adds a `test` script and its own specs covering this helper.
+
+**Upgrade test:** run `pnpm api test`. A red round-trip assertion after an upgrade is a genuine
+regression in `activity-stream.ts` (stored activities would decode wrong) — do not touch the spec.
+An `encoding shape` assertion going red means upstream *intentionally* changed the on-disk
+compression format; only then update the expected `{ r, v }` / `{ s, i }` shapes to match.
+
+## Playwright deployment golden path
+
+**Reason:** every open bug (#7–#12) was found by hand against production. Issue #24, item 2 asks for
+one browser golden path against the real deployed images so the next regression is found by CI.
+
+**Implementation:** a fork-owned `e2e/` Playwright project (outside the pnpm workspace) with a single
+spec: sign up -> complete onboarding -> create a training event -> see it on the calendar -> delete
+the account via `DELETE /user`. A `golden-path` job in `.github/workflows/deployment-smoke.yml`
+builds the production API and web images, boots them against ephemeral Postgres/Redis, runs the spec
+and uploads the Playwright report/traces/screenshots on failure. Disposable accounts follow issue
+#16's `qa+<purpose>-<runid>@openathlete.test` convention (`e2e/support/test-accounts.ts`); the spec
+deletes its own account and `e2e/scripts/purge-test-accounts.ts` is a backstop that discovers leaked
+accounts via a read-only `DATABASE_URL` query and removes each through `DELETE /user`. To stay safe
+against a shared target, the purge has two modes: the default *backstop* mode excludes the current
+`<runid>` and only considers accounts older than a safety window (`PURGE_MIN_AGE_MINUTES`, default 60),
+so it never deletes a concurrent run's in-flight account; *teardown* mode (`PURGE_OWN_RUN=1`, which the
+CI step sets) targets only the current run's own accounts regardless of age, so a crash that skipped
+the in-spec `DELETE /user` is still cleaned up. `RUN_ID` is `GITHUB_RUN_ID` in CI (shared by the spec
+and the teardown automatically); locally, export the same `E2E_RUN_ID` for the run and the teardown to
+reclaim exactly that run's accounts (the default `local-<timestamp>` differs per process), otherwise
+ad-hoc local leaks are reclaimed by the age-based backstop. Because it deletes accounts from whatever
+`DATABASE_URL`/API it is pointed at, the purge fails closed: it runs only when `ENV` is explicitly
+`development` or `test` (the CI step sets `ENV=development`) and refuses an unset/empty `ENV`,
+`production`, `staging`, `preview`, or anything else — not just `ENV=production`.
+
+The job is deliberately **not** a required check: `main-protection` (a repository ruleset this fork
+cannot edit) does not list it, and a brand-new browser check should prove itself stable before it can
+block merges. Recommend promoting it to required only after it has been green across several runs.
+Running the suite against a deployed URL (issue #24, item 5) is out of scope here; it needs only
+`WEB_BASE_URL`/`API_BASE_URL` pointed at a Railway preview/staging deployment plus a way to reach
+that environment's database for the purge backstop (or an admin list endpoint — see below).
+
+**Upstream modifications:** `.github/workflows/deployment-smoke.yml` (already fork-owned; a job was
+added). Everything else is under the fork-owned `e2e/` directory.
+
+**Upstream candidate:** partly — the `e2e/` harness is generally useful, but the CORS/port wiring is
+tied to this fork's Railway smoke setup. The account-listing gap (no admin endpoint, so the purge
+needs direct DB access) is a genuine upstream feature request.
+
+**Removal condition:** upstream ships an equivalent deployed-image E2E job.
+
+**Upgrade test:** run the golden path locally against `docker-compose.yml` (build the API and web
+images, boot them, then `cd e2e && WEB_BASE_URL=... API_BASE_URL=... npm test`). A failure that is a
+real product regression looks like a broken step with a screenshot/trace showing the app misbehaving
+(e.g. the event never appears on the calendar) — report it, do not weaken the assertion. A failure
+that only needs a test update looks like an intentional upstream UI change: a renamed onboarding
+step, a changed button label, or a moved event-creation affordance. Confirm by reproducing the new
+behaviour by hand; only then adjust the affected locator/step. The locators lean on accessible
+roles/names and English message-catalog strings, so a message-key rename is the most likely benign
+break.
+
+## `.dockerignore` for clean image builds
+
+**Reason:** neither Dockerfile had a `.dockerignore`, so `COPY . .` copied the host's
+`node_modules` into the build stage and overwrote the container's freshly installed, correctly
+platformed dependencies — a local `docker build` (or `docker compose build`) then failed inside the
+`libs/shared` Rollup build with `Unexpected token`. CI builds from a clean checkout and so never hit
+this, which made it a local-only trap.
+
+**Implementation:** a root `.dockerignore` excluding `**/node_modules`, build outputs, VCS, local
+`.env` files and the `e2e/` project from the build context.
+
+**Upstream modifications:** none (added file).
+
+**Upstream candidate:** yes — it is a straight build-hygiene fix that also speeds up the build.
+
+**Removal condition:** upstream adds its own `.dockerignore`; merge the two rather than dropping this
+one.
+
+**Upgrade test:** `docker build -f apps/api/Dockerfile .` and `docker build -f apps/web/Dockerfile .`
+from a checkout that has local `node_modules` present both succeed.
+
+## Demo seed can actually log in
+
+**Reason:** `libs/database/scripts/seed-demo-month.ts` wrote `demo@openathlete.local` with
+`password: "demo-hash"` — a literal string, not an Argon2 hash — so the seeded user could never log
+in. The script was also broken against the current Prisma client (snake_case field names), hard-coded
+September 2025, had no `prisma.seed` entry, and generated a colliding `externalId` across athletes.
+Issue #24, item 3.
+
+**Implementation:** the script now hashes the password with Argon2 and the same optional `HASH_PEPPER`
+handling the auth module uses (`apps/api/src/modules/auth/services/user.service.ts`). Because
+`HASH_PEPPER` lives in `apps/api/.env` (not `libs/database`'s own dotenv scope), the seed explicitly
+reads **only** the `HASH_PEPPER` value from `apps/api/.env` (via `dotenv.parse`, when it isn't already
+in the environment) so it hashes with the *same* pepper the API verifies against; otherwise a locally
+configured pepper would make the seeded user fail login. It deliberately does **not** load the whole
+API env file into `process.env`, so the seed's `ENV` gate and its target `DATABASE_URL` can never be
+silently inherited from `apps/api/.env` and point this destructive seed at an unintended database. It
+reads `DEMO_EMAIL`/`DEMO_PASSWORD`/`SEED_YEAR`/`SEED_MONTH` from the environment, uses the client's
+camelCase field names, makes each `externalId` unique per athlete, and marks the seeded users
+`onboardingCompleted` so a demo login lands on the seeded calendar rather than the onboarding wizard.
+There is **no hardcoded default password**: `DEMO_PASSWORD` is used when set (CI/Playwright set it for
+determinism), otherwise a random per-run password is generated and printed to stdout — so there is no
+well-known credential to leak even if the seed reaches an unintended database. Because it still
+creates login-able accounts, it seeds only when `ENV` is
+explicitly `development` or `test`. For any other `ENV` (unset/empty, `production`, staging, preview,
+a shared or mislabelled database) it **skips cleanly and exits 0** rather than throwing — the seed is
+registered as the Prisma seed hook (`prisma.config.ts` -> `migrations.seed`), so it also fires on
+`prisma migrate dev`/`reset` (`db:migrate`/`db:reset`); throwing would break that documented setup
+command, since `ENV` is not part of `libs/database`'s own env. `migrate deploy` (the Railway image
+path) never invokes the hook. `libs/database/.env.example` documents the optional `ENV`, and
+`libs/database/package.json` gains an `argon2` dependency. The Prisma seed hook is
+registered as `migrations.seed` in `libs/database/prisma.config.ts` (not the `prisma` block in
+`package.json`): a `prisma.config.ts` is present, and under Prisma 6 the config file takes precedence,
+so `package.json`'s `prisma.seed` is ignored. `prisma migrate deploy` — what the Docker image runs —
+does not fire the seed, so only local `prisma db seed`/`migrate reset`/`migrate dev` load demo data.
+
+**Upstream modifications:** `libs/database/scripts/seed-demo-month.ts`, `libs/database/prisma.config.ts`,
+`libs/database/package.json`, `pnpm-lock.yaml` (the `argon2` addition). On a lockfile conflict, take
+upstream's lockfile and re-run `pnpm install` rather than resolving by hand.
+
+**Upstream candidate:** yes — the script is upstream's and every one of these is a bug fix. The one
+judgement call is re-hashing in the seed rather than importing the API's `UserService` (which would
+drag the Nest DI graph into a standalone script); if upstream refactors hashing into a shared,
+dependency-free helper, import that instead of mirroring the algorithm.
+
+**Removal condition:** upstream fixes the seed script.
+
+**Upgrade test:** `pnpm database run db:seed:demo-month` (or `pnpm --filter @openathlete/database exec
+prisma db seed`, which must print `Running seed command ...`) against a local database, then log in as
+the demo user through `POST /auth/login`. A failure here is a regression in the seed or in auth hashing.
+If upstream changes the hashing algorithm or pepper handling, this seed must be updated to match
+(compare against `user.service.ts`) — that is a required test update, not a product regression.

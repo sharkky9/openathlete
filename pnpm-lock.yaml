@@ -843,6 +843,9 @@ importers:
       '@prisma/client':
         specifier: 6.15.0
         version: 6.15.0(prisma@6.15.0(typescript@5.1.6))(typescript@5.1.6)
+      argon2:
+        specifier: ^0.41.1
+        version: 0.41.1
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1

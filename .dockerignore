@@ -1,0 +1,28 @@
+# Never copy host-installed dependencies or build outputs into the image build
+# context: `COPY . .` would otherwise overwrite the container's freshly
+# installed, correctly-platformed node_modules with the host's (breaking the
+# in-image build), and bloat the context. CI builds from a clean checkout, so
+# this also makes local `docker build` match CI.
+**/node_modules
+**/dist
+**/build
+**/generated
+**/coverage
+**/.turbo
+**/.vite
+
+# VCS and local tooling
+.git
+.github
+.husky
+
+# Fork-owned e2e project and its artifacts (not needed to build the images)
+e2e
+
+# Local env / secrets — must never enter an image
+**/.env
+**/.env.*
+
+# Editor / OS noise
+**/.DS_Store
+**/*.log

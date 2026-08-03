@@ -166,3 +166,166 @@ jobs:
       - name: Dump web logs on failure
         if: failure()
         run: docker logs openathlete-web || true
+
+  golden-path:
+    name: Playwright golden path (signup to delete)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: openathlete
+          POSTGRES_PASSWORD: openathlete_ci_password
+          POSTGRES_DB: openathlete
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U openathlete"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          tags: openathlete-api:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          tags: openathlete-web:ci
+          load: true
+          # The browser talks to the API directly on :3000, so CORS on the API
+          # must allow the web origin (:8080) below.
+          build-args: |
+            VITE_API_BASE_URL=http://localhost:3000
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start API container
+        run: |
+          docker run -d --name openathlete-api --network host \
+            -e ENV=development \
+            -e NODE_ENV=production \
+            -e PORT=3000 \
+            -e APP_URL=http://localhost:3000 \
+            -e FRONTEND_URL=http://localhost:8080 \
+            -e CORS_ORIGINS=http://localhost:8080 \
+            -e DATABASE_URL=postgresql://openathlete:openathlete_ci_password@localhost:5432/openathlete \
+            -e REDIS_URL=redis://localhost:6379/0 \
+            -e HASH_PEPPER=ci.hash.pepper.not.a.secret.min.32.characters \
+            -e JWT_SECRET_KEY=ci.jwt.secret.key.not.a.secret.min.32.characters \
+            -e STRAVA_CLIENT_ID=ci \
+            -e STRAVA_CLIENT_SECRET=ci \
+            -e STRAVA_REDIRECT_URI=http://localhost:3000/auth/strava/callback \
+            -e STRAVA_WEBHOOK_TOKEN=ci.strava.webhook.token \
+            -e POLAR_CLIENT_ID=ci \
+            -e POLAR_CLIENT_SECRET=ci.polar.client.secret \
+            -e POLAR_REDIRECT_URI=http://localhost:3000/auth/polar/callback \
+            -e POLAR_WEBHOOK_URL=http://localhost:3000/webhooks/polar \
+            -e POLAR_WEBHOOK_SECRET_KEY=ci.polar.webhook.secret \
+            -e BREVO_API_KEY=ci.brevo.api.key \
+            -e BREVO_FROM_EMAIL=ci@example.com \
+            -e OPENAI_API_KEY=ci.openai.api.key \
+            -e GOOGLE_GENERATIVE_AI_API_KEY=ci.google.api.key \
+            -e STRIPE_SECRET_KEY=sk_test.ci.placeholder \
+            openathlete-api:ci
+
+      - name: Start web container
+        run: docker run -d --name openathlete-web -p 8080:80 openathlete-web:ci
+
+      - name: Wait for API /health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/health | grep -q '"status":"ok"'; then
+              echo "API is healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "API did not become healthy in time"
+          docker logs openathlete-api
+          exit 1
+
+      - name: Wait for web SPA
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/ -o /dev/null; then
+              echo "Web is serving"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Web container did not serve the SPA"
+          docker logs openathlete-web
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run golden path
+        working-directory: e2e
+        env:
+          WEB_BASE_URL: http://localhost:8080
+          API_BASE_URL: http://localhost:3000
+        run: npm test
+
+      - name: Purge any leaked test accounts
+        if: always()
+        working-directory: e2e
+        env:
+          ENV: development
+          API_BASE_URL: http://localhost:3000
+          DATABASE_URL: postgresql://openathlete:openathlete_ci_password@localhost:5432/openathlete
+          # teardown mode: clean up this run's own accounts (e.g. left by a crash
+          # before the in-spec DELETE /user), regardless of age.
+          PURGE_OWN_RUN: "1"
+        run: npm run purge || true
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          echo "=== API logs ==="; docker logs openathlete-api || true
+          echo "=== Web logs ==="; docker logs openathlete-web || true
