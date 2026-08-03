@@ -7,19 +7,29 @@
  * database (DATABASE_URL) and then removed through the real DELETE /user path so
  * the app's own cascade logic runs — the same teardown the convention promises.
  *
- * All disposable accounts share E2E_PASSWORD, so a leaked account can be logged
+ * All disposable accounts share TEST_PASSWORD, so a leaked account can be logged
  * into and deleted. One that cannot be logged in is reported, not force-deleted.
+ *
+ * To stay safe against a shared target, discovery skips the current run's own
+ * accounts and only considers accounts older than a safety window, so a
+ * concurrently running suite's in-flight account is never deleted mid-test.
  *
  * Refuses to run against production.
  */
 import { Client } from 'pg';
 
 import {
+  RUN_ID,
   TEST_EMAIL_DOMAIN,
   TEST_PASSWORD,
   apiDeleteAccount,
   apiLogin,
 } from '../support/test-accounts';
+
+// Only purge accounts older than this many minutes, so a concurrently running
+// suite's freshly created account (against a shared, non-ephemeral target) is
+// never deleted mid-test. Override with PURGE_MIN_AGE_MINUTES.
+const MIN_AGE_MINUTES = Number(process.env.PURGE_MIN_AGE_MINUTES ?? 60);
 
 async function main(): Promise<void> {
   if (process.env.ENV === 'production') {
@@ -40,8 +50,15 @@ async function main(): Promise<void> {
   let leaked: string[];
   try {
     const res = await client.query<{ email: string }>(
-      `SELECT email FROM "user" WHERE email LIKE $1`,
-      [`qa+%@${TEST_EMAIL_DOMAIN}`],
+      `SELECT email FROM "user"
+       WHERE email LIKE $1
+         AND email NOT LIKE $2
+         AND created_at < NOW() - make_interval(mins => $3::int)`,
+      [
+        `qa+%@${TEST_EMAIL_DOMAIN}`,
+        `qa+%-${RUN_ID}@${TEST_EMAIL_DOMAIN}`,
+        MIN_AGE_MINUTES,
+      ],
     );
     leaked = res.rows.map((r) => r.email);
   } finally {

@@ -74,6 +74,8 @@ async function upsertDemoUserAndAthlete() {
       password: hashedPassword,
       // ensure the demo user is also a coach
       roles: { set: ["ATHLETE", "COACH"] },
+      // skip onboarding so login lands on the seeded calendar, not the wizard
+      onboardingCompleted: true,
     },
     create: {
       email: DEMO_EMAIL,
@@ -81,6 +83,7 @@ async function upsertDemoUserAndAthlete() {
       roles: ["ATHLETE", "COACH"],
       firstName: DEMO_FIRST_NAME,
       lastName: DEMO_LAST_NAME,
+      onboardingCompleted: true,
     },
   });
 
@@ -534,6 +537,7 @@ async function upsertCoachedAthlete(
       lastName: lastName,
       password: hashedPassword,
       roles: { set: ["ATHLETE"] },
+      onboardingCompleted: true,
     },
     create: {
       email,
@@ -541,6 +545,7 @@ async function upsertCoachedAthlete(
       roles: ["ATHLETE"],
       firstName: firstName,
       lastName: lastName,
+      onboardingCompleted: true,
     },
   });
 
@@ -563,10 +568,18 @@ async function upsertCoachedAthlete(
 }
 
 async function seedAll() {
-  if (process.env.ENV === "production") {
+  // This seed creates login-able accounts with a known default password, so it
+  // must never run against a hosted environment. Allow only local dev / CI:
+  // ENV unset, "development" or "test". Anything else (production, staging,
+  // preview, ...) is refused. `prisma migrate dev`/`reset` fire this hook, so
+  // the guard also protects those paths on a mislabelled environment.
+  const env = process.env.ENV;
+  const allowed = new Set(["development", "test"]);
+  if (env !== undefined && env !== "" && !allowed.has(env)) {
     throw new Error(
-      "Refusing to seed demo data with ENV=production. " +
-        "seed-demo-month.ts is for local development and CI only.",
+      `Refusing to seed demo data with ENV=${env}. seed-demo-month.ts creates ` +
+        `accounts with a known password and is for local development and CI ` +
+        `only (ENV unset, "development" or "test").`,
     );
   }
 
