@@ -309,6 +309,9 @@ jobs:
           ENV: development
           API_BASE_URL: http://localhost:3000
           DATABASE_URL: postgresql://openathlete:openathlete_ci_password@localhost:5432/openathlete
+          # teardown mode: clean up this run's own accounts (e.g. left by a crash
+          # before the in-spec DELETE /user), regardless of age.
+          PURGE_OWN_RUN: "1"
         run: npm run purge || true
 
       - name: Upload Playwright artifacts on failure

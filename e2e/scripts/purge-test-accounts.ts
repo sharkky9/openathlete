@@ -26,10 +26,22 @@ import {
   apiLogin,
 } from '../support/test-accounts';
 
-// Only purge accounts older than this many minutes, so a concurrently running
-// suite's freshly created account (against a shared, non-ephemeral target) is
-// never deleted mid-test. Override with PURGE_MIN_AGE_MINUTES.
+// Two modes:
+//
+// - Backstop (default): clean up accounts leaked by *other*, past runs against a
+//   shared, long-lived target. It excludes the current run's own accounts and
+//   only considers accounts older than a safety window, so a concurrently
+//   running suite's in-flight account is never deleted mid-test.
+//   Tune the window with PURGE_MIN_AGE_MINUTES (default 60).
+//
+// - Teardown (PURGE_OWN_RUN=1): the post-run teardown of *this* run — used by
+//   the CI job right after the spec. It deletes only this run's own accounts
+//   (scoped to RUN_ID) regardless of age, so a crash that skipped the in-spec
+//   DELETE /user is still cleaned up, while other runs' accounts are untouched.
 const MIN_AGE_MINUTES = Number(process.env.PURGE_MIN_AGE_MINUTES ?? 60);
+const OWN_RUN = ['1', 'true', 'yes'].includes(
+  (process.env.PURGE_OWN_RUN ?? '').toLowerCase(),
+);
 
 async function main(): Promise<void> {
   if (process.env.ENV === 'production') {
@@ -44,22 +56,35 @@ async function main(): Promise<void> {
     throw new Error('DATABASE_URL is required to discover leaked accounts.');
   }
 
+  console.log(
+    OWN_RUN
+      ? `Purge mode: teardown (this run only, RUN_ID=${RUN_ID}).`
+      : `Purge mode: backstop (other runs, older than ${MIN_AGE_MINUTES}m).`,
+  );
+
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
 
   let leaked: string[];
   try {
-    const res = await client.query<{ email: string }>(
-      `SELECT email FROM "user"
-       WHERE email LIKE $1
-         AND email NOT LIKE $2
-         AND created_at < NOW() - make_interval(mins => $3::int)`,
-      [
-        `qa+%@${TEST_EMAIL_DOMAIN}`,
-        `qa+%-${RUN_ID}@${TEST_EMAIL_DOMAIN}`,
-        MIN_AGE_MINUTES,
-      ],
-    );
+    const res = OWN_RUN
+      ? await client.query<{ email: string }>(
+          // teardown: only this run's own accounts, regardless of age
+          `SELECT email FROM "user" WHERE email LIKE $1`,
+          [`qa+%-${RUN_ID}@${TEST_EMAIL_DOMAIN}`],
+        )
+      : await client.query<{ email: string }>(
+          // backstop: other runs' accounts, older than the safety window
+          `SELECT email FROM "user"
+           WHERE email LIKE $1
+             AND email NOT LIKE $2
+             AND created_at < NOW() - make_interval(mins => $3::int)`,
+          [
+            `qa+%@${TEST_EMAIL_DOMAIN}`,
+            `qa+%-${RUN_ID}@${TEST_EMAIL_DOMAIN}`,
+            MIN_AGE_MINUTES,
+          ],
+        );
     leaked = res.rows.map((r) => r.email);
   } finally {
     await client.end();

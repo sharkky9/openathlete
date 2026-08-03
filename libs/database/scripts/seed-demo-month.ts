@@ -569,17 +569,18 @@ async function upsertCoachedAthlete(
 
 async function seedAll() {
   // This seed creates login-able accounts with a known default password, so it
-  // must never run against a hosted environment. Allow only local dev / CI:
-  // ENV unset, "development" or "test". Anything else (production, staging,
-  // preview, ...) is refused. `prisma migrate dev`/`reset` fire this hook, so
-  // the guard also protects those paths on a mislabelled environment.
+  // must never run against a hosted environment. Fail closed: require ENV to be
+  // explicitly "development" or "test". An unset/empty ENV, ENV=production, or
+  // anything else (staging, preview, a mislabelled deployment) is refused.
+  // `prisma migrate dev`/`reset` fire this hook, so the guard protects those
+  // paths too; `prisma migrate deploy` (the Railway image path) does not.
   const env = process.env.ENV;
   const allowed = new Set(["development", "test"]);
-  if (env !== undefined && env !== "" && !allowed.has(env)) {
+  if (env === undefined || !allowed.has(env)) {
     throw new Error(
-      `Refusing to seed demo data with ENV=${env}. seed-demo-month.ts creates ` +
-        `accounts with a known password and is for local development and CI ` +
-        `only (ENV unset, "development" or "test").`,
+      `Refusing to seed demo data with ENV=${env ?? "(unset)"}. ` +
+        `seed-demo-month.ts creates accounts with a known password and must be ` +
+        `run explicitly in local development or CI: set ENV=development or ENV=test.`,
     );
   }
 
