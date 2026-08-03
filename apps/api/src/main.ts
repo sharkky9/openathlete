@@ -4,11 +4,17 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { ApiEnvSchemaType } from '@openathlete/shared';
 
-import { createBetterStackLogger } from './common/logging/better-stack.logger';
 import './instrument';
 import { AppModule } from './modules/app.module';
 
 async function bootstrap() {
+  // Loaded lazily: the shipper pulls in axios, which binds http/https at module
+  // evaluation time, and Sentry's require hook (./instrument) must be installed
+  // first for outgoing requests to stay instrumented.
+  const { createBetterStackLogger } = await import(
+    './common/logging/better-stack.logger'
+  );
+
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
     logger: createBetterStackLogger(process.env),
