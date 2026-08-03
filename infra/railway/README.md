@@ -11,11 +11,13 @@ Everything in this directory is deployment packaging only — no application beh
 | `redis`         | Docker image `redis:7-alpine`               | no     | Volume at `/data`; used for BullMQ queues and the Socket.IO adapter |
 | `api`           | This repo, `apps/api/Dockerfile`            | yes    | Runs `prisma migrate deploy` on boot, then the NestJS server; health check on `/health` |
 | `web`           | This repo, `apps/web/Dockerfile`            | yes    | nginx serving the built SPA on port `80`            |
+| `backup`        | This repo, `infra/railway/backup/Dockerfile` | no    | Daily cron: dumps Postgres to the project bucket. See `BACKUP-RESTORE.md` |
 
 The API and web services read their build/deploy settings from config as code:
 
 - `infra/railway/api.railway.json`
 - `infra/railway/web.railway.json`
+- `infra/railway/backup.railway.json`
 
 Set each service's *Config-as-code file path* (Settings → Config as code) to the matching file.
 
@@ -67,5 +69,7 @@ preview. Railway destroys the environment when the PR is merged or closed.
 
 ## Related docs
 
+- `OPERATIONS.md` — environments, local development, monitoring, recreating the project, troubleshooting.
+- `BACKUP-RESTORE.md` — the nightly dump, the restore drill and disaster recovery.
 - `../../.github/workflows/deployment-smoke.yml` — CI that builds both production images, runs the
   migrations and smoke-tests signup/login before a PR can merge.
