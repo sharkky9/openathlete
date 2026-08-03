@@ -24,15 +24,16 @@ case "${BUCKET_URL_STYLE:-virtual-host}" in
 esac
 
 s3() {
+  # Credentials go in through a config on stdin so they never reach argv.
   method="$1"
   key="$2"
   shift 2
-  curl --fail --silent --show-error \
-    --aws-sigv4 "aws:amz:${REGION}:s3" \
-    --user "${BUCKET_ACCESS_KEY_ID}:${BUCKET_SECRET_ACCESS_KEY}" \
-    --request "$method" \
-    "$@" \
-    "${BASE_URL}${key}"
+  printf 'user = "%s:%s"\n' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" |
+    curl --config - --fail --silent --show-error \
+      --aws-sigv4 "aws:amz:${REGION}:s3" \
+      --request "$method" \
+      "$@" \
+      "${BASE_URL}${key}"
 }
 
 # Restore drills target a scratch database that does not exist yet.

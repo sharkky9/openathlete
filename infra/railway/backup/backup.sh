@@ -32,15 +32,16 @@ DUMP="/tmp/${PREFIX}-${STAMP}.dump"
 
 s3() {
   # s3 <method> <key> [curl args...]
+  # Credentials go in through a config on stdin so they never reach argv.
   method="$1"
   key="$2"
   shift 2
-  curl --fail --silent --show-error \
-    --aws-sigv4 "aws:amz:${REGION}:s3" \
-    --user "${BUCKET_ACCESS_KEY_ID}:${BUCKET_SECRET_ACCESS_KEY}" \
-    --request "$method" \
-    "$@" \
-    "${BASE_URL}${key}"
+  printf 'user = "%s:%s"\n' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" |
+    curl --config - --fail --silent --show-error \
+      --aws-sigv4 "aws:amz:${REGION}:s3" \
+      --request "$method" \
+      "$@" \
+      "${BASE_URL}${key}"
 }
 
 echo "Dumping database to ${DUMP}"
@@ -64,7 +65,12 @@ if [ "$RETENTION_DAYS" -gt 0 ]; then
       key="${key#/}"
       name="${key##*/}"
       case "$name" in
-        *.dump) [ "${name%.dump}" \< "$CUTOFF" ] && s3 DELETE "/${key}" >/dev/null && echo "deleted ${key}" ;;
+        *.dump)
+          if [ "${name%.dump}" \< "$CUTOFF" ]; then
+            s3 DELETE "/${key}" >/dev/null
+            echo "deleted ${key}"
+          fi
+          ;;
       esac
     done
 fi
