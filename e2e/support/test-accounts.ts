@@ -31,10 +31,15 @@ export const RUN_ID =
 
 export const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000';
 
-/** Build a disposable email for a given purpose, e.g. `golden-path`. */
+/**
+ * Build a disposable email for a given purpose, e.g. `golden-path`.
+ * Lower-cased in full: the API lower-cases the whole address on signup, and the
+ * purge script's `LIKE` lookups are case-sensitive, so a `RUN_ID` with uppercase
+ * (e.g. a custom `E2E_RUN_ID`) would otherwise never match at cleanup time.
+ */
 export function testEmail(purpose: string): string {
   const safePurpose = purpose.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  return `qa+${safePurpose}-${RUN_ID}@${TEST_EMAIL_DOMAIN}`;
+  return `qa+${safePurpose}-${RUN_ID}@${TEST_EMAIL_DOMAIN}`.toLowerCase();
 }
 
 interface LoginResponse {

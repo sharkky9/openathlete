@@ -82,9 +82,12 @@ async function main(): Promise<void> {
   try {
     const res = OWN_RUN
       ? await client.query<{ email: string }>(
-          // teardown: only this run's own accounts, regardless of age
+          // teardown: only this run's own accounts, regardless of age.
+          // RUN_ID is lower-cased to match: testEmail() lower-cases the whole
+          // address and the API stores it lower-cased, while LIKE is
+          // case-sensitive — so an uppercase custom E2E_RUN_ID would miss here.
           `SELECT email FROM "user" WHERE email LIKE $1`,
-          [`qa+%-${RUN_ID}@${TEST_EMAIL_DOMAIN}`],
+          [`qa+%-${RUN_ID.toLowerCase()}@${TEST_EMAIL_DOMAIN}`],
         )
       : await client.query<{ email: string }>(
           // backstop: other runs' accounts, older than the safety window
@@ -94,7 +97,7 @@ async function main(): Promise<void> {
              AND created_at < NOW() - make_interval(mins => $3::int)`,
           [
             `qa+%@${TEST_EMAIL_DOMAIN}`,
-            `qa+%-${RUN_ID}@${TEST_EMAIL_DOMAIN}`,
+            `qa+%-${RUN_ID.toLowerCase()}@${TEST_EMAIL_DOMAIN}`,
             MIN_AGE_MINUTES,
           ],
         );
