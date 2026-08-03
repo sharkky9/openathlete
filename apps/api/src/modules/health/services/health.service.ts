@@ -213,5 +213,16 @@ async function openConnection(client: Redis): Promise<void> {
 }
 
 function toMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  // ioredis rejects connection failures with an AggregateError whose message is
+  // empty, which would leave the log line without any reason at all.
+  if (error.message) {
+    return error.message;
+  }
+
+  const code = 'code' in error ? String(error.code) : undefined;
+  return code ? `${error.name} (${code})` : error.name;
 }

@@ -71,12 +71,18 @@ export class BetterStackLogShipper {
       clearInterval(this.timer);
       this.timer = null;
     }
-    // flush() sends at most one batch, so drain everything that is buffered:
-    // the records written right before a redeploy are the interesting ones.
-    while (this.buffer.length > 0) {
+    // Stop accepting records before draining: the API is still serving traffic
+    // until the signal is re-raised, so new logs could otherwise refill the
+    // buffer as fast as it drains and stall the shutdown.
+    this.stopped = true;
+
+    // flush() sends at most one batch, so drain what is buffered: the records
+    // written right before a redeploy are the interesting ones. Bounded so an
+    // unreachable ingestion host cannot hold the process past its grace period.
+    const maxBatches = Math.ceil(MAX_BUFFER_SIZE / MAX_BATCH_SIZE);
+    for (let i = 0; i < maxBatches && this.buffer.length > 0; i += 1) {
       await this.flush();
     }
-    this.stopped = true;
   }
 
   /**
