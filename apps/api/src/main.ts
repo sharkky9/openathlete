@@ -4,12 +4,14 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { ApiEnvSchemaType } from '@openathlete/shared';
 
+import { createBetterStackLogger } from './common/logging/better-stack.logger';
 import './instrument';
 import { AppModule } from './modules/app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
+    logger: createBetterStackLogger(process.env),
   });
 
   const configService = app.get(ConfigService<ApiEnvSchemaType, true>);

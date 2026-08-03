@@ -1,0 +1,79 @@
+{
+  "$comment": "Declarative Better Stack Uptime monitors and log alert policy for OpenAthlete. Monitor objects are sent as-is to https://uptime.betterstack.com/api/v2/monitors by scripts/monitoring/apply-better-stack-monitors.mjs. {{API_URL}} and {{WEB_URL}} are substituted from the environment. See doc/monitoring.md.",
+  "monitors": [
+    {
+      "pronounceable_name": "OpenAthlete API liveness",
+      "url": "{{API_URL}}/health",
+      "monitor_type": "keyword",
+      "required_keyword": "\"status\":\"ok\"",
+      "check_frequency": 60,
+      "request_timeout": 10,
+      "confirmation_period": 60,
+      "recovery_period": 60,
+      "regions": ["eu"],
+      "email": true,
+      "push": true,
+      "sms": false,
+      "call": false,
+      "ssl_expiration": 7,
+      "follow_redirects": true
+    },
+    {
+      "pronounceable_name": "OpenAthlete API readiness (Postgres + Redis)",
+      "url": "{{API_URL}}/health/ready",
+      "monitor_type": "expected_status_code",
+      "expected_status_codes": [200],
+      "check_frequency": 180,
+      "request_timeout": 15,
+      "confirmation_period": 180,
+      "recovery_period": 180,
+      "regions": ["eu"],
+      "email": true,
+      "push": true,
+      "sms": false,
+      "call": false,
+      "follow_redirects": true
+    },
+    {
+      "pronounceable_name": "OpenAthlete web availability",
+      "url": "{{WEB_URL}}/healthz",
+      "monitor_type": "expected_status_code",
+      "expected_status_codes": [200],
+      "check_frequency": 180,
+      "request_timeout": 10,
+      "confirmation_period": 180,
+      "recovery_period": 180,
+      "regions": ["eu"],
+      "email": true,
+      "push": true,
+      "sms": false,
+      "call": false,
+      "ssl_expiration": 7,
+      "follow_redirects": true
+    }
+  ],
+  "logAlerts": [
+    {
+      "$comment": "Log-based alerts live in Better Stack Telemetry and are not exposed by the Uptime API; create them manually with these thresholds.",
+      "name": "OpenAthlete API error rate",
+      "source": "openathlete-api",
+      "query": "level:error",
+      "threshold": "more than 10 matching events in 5 minutes",
+      "severity": "high"
+    },
+    {
+      "name": "OpenAthlete API log silence",
+      "source": "openathlete-api",
+      "query": "*",
+      "threshold": "fewer than 1 event in 15 minutes",
+      "severity": "medium"
+    },
+    {
+      "name": "OpenAthlete API readiness degraded",
+      "source": "openathlete-api",
+      "query": "message:\"readiness check failed\"",
+      "threshold": "more than 3 matching events in 10 minutes",
+      "severity": "high"
+    }
+  ]
+}

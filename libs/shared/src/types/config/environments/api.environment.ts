@@ -324,6 +324,27 @@ export const ApiEnvSchema = z
       .optional()
       .describe('Better Stack (Sentry) DSN for error tracking and monitoring'),
 
+    BETTER_STACK_SOURCE_TOKEN: z
+      .string()
+      .optional()
+      .describe(
+        'Better Stack log source token (optional, defaults to the token embedded in BETTER_STACK_DSN)',
+      ),
+
+    BETTER_STACK_INGESTING_HOST: z
+      .string()
+      .optional()
+      .describe(
+        'Better Stack log ingesting host, e.g. s123456.eu-nbg-2.betterstackdata.com (optional, defaults to the host of BETTER_STACK_DSN)',
+      ),
+
+    BETTER_STACK_SERVICE_NAME: z
+      .string()
+      .optional()
+      .describe(
+        'Service name attached to every log event shipped to Better Stack (defaults to openathlete-api)',
+      ),
+
     // Normalization processor configuration (optional)
     NORMALIZATION_MIN_MOVING_SPEED_MS: z
       .string()
