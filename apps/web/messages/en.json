@@ -972,5 +972,7 @@
   "messages_thread_count_one": "{count} conversation",
   "messages_thread_count_other": "{count} conversations",
   "messages_thread_fallback_title": "Thread {threadId}",
-  "messages_message_edited": "edited"
+  "messages_message_edited": "edited",
+  "messages_no_messages": "No messages",
+  "messages_start_conversation": "Start the conversation"
 }

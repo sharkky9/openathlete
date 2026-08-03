@@ -346,7 +346,11 @@ export function ChatWindow() {
                           >
                             <div className="flex items-center justify-between w-full gap-2">
                               <span className="flex-1 truncate">
-                                {threadTitle || `Thread ${threadId}`} -{' '}
+                                {threadTitle ||
+                                  m.messages_thread_fallback_title({
+                                    threadId,
+                                  })}{' '}
+                                -{' '}
                                 {new Date(thread.createdAt).toLocaleDateString(
                                   getDateLocale(getLocale()),
                                 )}
