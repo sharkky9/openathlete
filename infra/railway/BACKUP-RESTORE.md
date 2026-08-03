@@ -116,3 +116,22 @@ printf 'user = "%s:%s"\n' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" |
 
 A missing dump for the current day means the nightly run failed — check the `backup` service's
 deployment logs.
+
+## Last verified
+
+2026-08-03, on Railway against production:
+
+```
+04:45:08  Dumping database to /tmp/production-20260803T044508Z.dump
+04:45:08  Dump size: 200.0K
+04:45:08  Uploading s3://…/production/20260803T044508Z.dump
+04:45:08  Pruning dumps older than 20260720T044508Z
+04:45:08  Backup complete
+
+04:50:24  Recreating scratch database restore_drill
+04:50:24  Restoring s3://…/production/20260803T044508Z.dump
+04:50:25  _prisma_migrations 73 | training_zone 10 | athlete 2 | user 2
+04:50:25  Restore complete
+```
+
+The scratch database was dropped afterwards.
