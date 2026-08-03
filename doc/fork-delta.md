@@ -305,7 +305,10 @@ against a shared target, the purge has two modes: the default *backstop* mode ex
 `<runid>` and only considers accounts older than a safety window (`PURGE_MIN_AGE_MINUTES`, default 60),
 so it never deletes a concurrent run's in-flight account; *teardown* mode (`PURGE_OWN_RUN=1`, which the
 CI step sets) targets only the current run's own accounts regardless of age, so a crash that skipped
-the in-spec `DELETE /user` is still cleaned up. Because it deletes accounts from whatever
+the in-spec `DELETE /user` is still cleaned up. `RUN_ID` is `GITHUB_RUN_ID` in CI (shared by the spec
+and the teardown automatically); locally, export the same `E2E_RUN_ID` for the run and the teardown to
+reclaim exactly that run's accounts (the default `local-<timestamp>` differs per process), otherwise
+ad-hoc local leaks are reclaimed by the age-based backstop. Because it deletes accounts from whatever
 `DATABASE_URL`/API it is pointed at, the purge fails closed: it runs only when `ENV` is explicitly
 `development` or `test` (the CI step sets `ENV=development`) and refuses an unset/empty `ENV`,
 `production`, `staging`, `preview`, or anything else — not just `ENV=production`.

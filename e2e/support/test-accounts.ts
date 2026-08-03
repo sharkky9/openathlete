@@ -14,11 +14,20 @@ export const TEST_EMAIL_DOMAIN = 'openathlete.test';
 export const TEST_PASSWORD = 'E2ePassw0rd!disposable';
 
 /**
- * Stable identifier for the current run. In CI this is the GitHub run id so a
- * leaked account can be traced back to the exact workflow run; locally it is a
- * timestamp so repeated local runs never collide.
+ * Stable identifier for the current run, embedded in every disposable email.
+ *
+ * Precedence:
+ *  - `E2E_RUN_ID` — an explicit id. Export the SAME value for the test run and a
+ *    later `PURGE_OWN_RUN=1` teardown to reclaim exactly that run's accounts
+ *    locally (a bare `local-<timestamp>` fallback differs between the two
+ *    processes, so teardown would otherwise match nothing).
+ *  - `GITHUB_RUN_ID` — in CI, so a leaked account traces back to the workflow run
+ *    and the post-run teardown targets it without extra setup.
+ *  - `local-<timestamp>` — default for ad-hoc local runs; unique so runs never
+ *    collide (reclaimed by the default age-based backstop, not teardown mode).
  */
-export const RUN_ID = process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
+export const RUN_ID =
+  process.env.E2E_RUN_ID ?? process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
 
 export const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000';
 

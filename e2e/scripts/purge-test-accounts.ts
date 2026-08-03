@@ -38,6 +38,10 @@ import {
 //   the CI job right after the spec. It deletes only this run's own accounts
 //   (scoped to RUN_ID) regardless of age, so a crash that skipped the in-spec
 //   DELETE /user is still cleaned up, while other runs' accounts are untouched.
+//   In CI, RUN_ID is GITHUB_RUN_ID (shared by both processes automatically). To
+//   use teardown locally, export the SAME E2E_RUN_ID for the test run and the
+//   purge (otherwise RUN_ID falls back to a per-process local-<timestamp> and
+//   matches nothing); ad-hoc local runs without it are reclaimed by backstop.
 const MIN_AGE_MINUTES = Number(process.env.PURGE_MIN_AGE_MINUTES ?? 60);
 const OWN_RUN = ['1', 'true', 'yes'].includes(
   (process.env.PURGE_OWN_RUN ?? '').toLowerCase(),
