@@ -91,7 +91,7 @@ or closed (observed: an `openathlete-pr-5` preview was auto-torn-down on close).
 > secret. `HASH_PEPPER` and `JWT_SECRET_KEY` were regenerated, but `BREVO_API_KEY`, `OPENAI_API_KEY`,
 > `GOOGLE_GENERATIVE_AI_API_KEY` and the Strava/Polar client secrets and webhook tokens are still
 > the production values. Until that is fixed, a preview can reach those real third-party accounts.
-> See `../../docs/testing-and-staging-strategy.md` (the finding at the top) and its tracking issue.
+> See `../../docs/testing-and-staging-strategy.md` (the finding at the top) and issue #31.
 
 ## Related docs
 

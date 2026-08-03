@@ -21,8 +21,8 @@ before anything else — see the box immediately below.
 > reachable `*.up.railway.app` preview can send real email through the production Brevo account,
 > spend against the production OpenAI/Google keys, and validate webhooks with the production signing
 > secrets. This contradicts the isolation rule in `infra/railway/variables.env.example`
-> ("generate per environment, never reuse across environments"). It is tracked separately as its own
-> issue; this document does not fix it.
+> ("generate per environment, never reuse across environments"). It is tracked as issue **#31**;
+> this document does not fix it.
 
 ## Why this exists
 
@@ -151,7 +151,7 @@ running `staging` and `openathlete-pr-13` environments:
   were **not** — they are identical to production on staging and on the preview. Only the OAuth
   client IDs and `STRIPE_SECRET_KEY` remain at their `unconfigured`/`sk_test_unconfigured`
   placeholders. This is the opposite of what `variables.env.example` prescribes; see the box at the
-  top and the dedicated issue.
+  top and issue **#31**.
 
 ### Isolation rules — intended vs. actual
 
@@ -299,7 +299,7 @@ Notes on placement:
    `HASH_PEPPER` and `JWT_SECRET_KEY` are already regenerated for staging/previews. Still to do:
    reset `BREVO_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `STRAVA_CLIENT_SECRET`,
    `STRAVA_WEBHOOK_TOKEN`, `POLAR_CLIENT_SECRET` and `POLAR_WEBHOOK_SECRET_KEY` on `staging` back to
-   `unconfigured` (they are currently copied from production). Tracked as its own issue.
+   `unconfigured` (they are currently copied from production). Tracked as issue **#31**.
 4. **Password-protect staging** (Railway HTTP basic auth or an allowlist at the edge) so a
    `*.up.railway.app` URL with open signup is not publicly reachable.
 5. **Production QA policy, written down:** production is verified by (a) `/health`, (b) the smoke
@@ -323,7 +323,7 @@ Notes on placement:
 - [x] Correct the "Pull request previews" section of `infra/railway/README.md` to describe the
       environments as they are (done in this PR — the section is now verified).
 - [ ] **Reset staging's copied production credentials to `unconfigured`** (Brevo/OpenAI/Google keys
-      and the Strava/Polar client secrets + webhook tokens). Highest-priority item; own issue.
+      and the Strava/Polar client secrets + webhook tokens). Highest-priority item; issue **#31**.
 - [ ] Write the production-QA policy (§5.5) into `CONTRIBUTING.md`.
 - [ ] Align `deployment-smoke.yml` triggers with the other workflows.
 - [x] Delete the QA user/event that was created in production during the deployment check
