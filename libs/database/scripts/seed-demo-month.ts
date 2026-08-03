@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
@@ -36,7 +37,14 @@ type Sport =
   | "OTHER";
 
 const DEMO_EMAIL = process.env.DEMO_EMAIL ?? "demo@openathlete.local";
-const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? "demo-openathlete-2025";
+// No hardcoded default password: a well-known credential would be leakable in any
+// database this seed reaches (e.g. one mislabelled as ENV=development). Use
+// DEMO_PASSWORD when provided (CI/Playwright set it for determinism); otherwise
+// generate a random per-run password and print it below so a local developer can
+// still log in. Result: there is no default credential to leak.
+const DEMO_PASSWORD_FROM_ENV = process.env.DEMO_PASSWORD;
+const DEMO_PASSWORD =
+  DEMO_PASSWORD_FROM_ENV ?? randomBytes(18).toString("base64url");
 const DEMO_FIRST_NAME = "Demo";
 const DEMO_LAST_NAME = "Athlete";
 
@@ -614,6 +622,13 @@ async function seedAll(): Promise<boolean> {
       "Warning: HASH_PEPPER is not set for the seed. If the API runs with a " +
         "pepper (apps/api/.env), the seeded demo user will fail login. Ensure " +
         "apps/api/.env exists or export HASH_PEPPER to match the API.",
+    );
+  }
+
+  if (DEMO_PASSWORD_FROM_ENV === undefined) {
+    console.log(
+      `Generated a random demo password (set DEMO_PASSWORD to choose your own).\n` +
+        `  Demo login: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`,
     );
   }
 

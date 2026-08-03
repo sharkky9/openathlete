@@ -370,7 +370,10 @@ API verifies against; otherwise a locally configured pepper would make the seede
 reads `DEMO_EMAIL`/`DEMO_PASSWORD`/`SEED_YEAR`/`SEED_MONTH` from the environment, uses the client's
 camelCase field names, makes each `externalId` unique per athlete, and marks the seeded users
 `onboardingCompleted` so a demo login lands on the seeded calendar rather than the onboarding wizard.
-Because it creates login-able accounts with a known default password, it seeds only when `ENV` is
+There is **no hardcoded default password**: `DEMO_PASSWORD` is used when set (CI/Playwright set it for
+determinism), otherwise a random per-run password is generated and printed to stdout — so there is no
+well-known credential to leak even if the seed reaches an unintended database. Because it still
+creates login-able accounts, it seeds only when `ENV` is
 explicitly `development` or `test`. For any other `ENV` (unset/empty, `production`, staging, preview,
 a shared or mislabelled database) it **skips cleanly and exits 0** rather than throwing — the seed is
 registered as the Prisma seed hook (`prisma.config.ts` -> `migrations.seed`), so it also fires on
