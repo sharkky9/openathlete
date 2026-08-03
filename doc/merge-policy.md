@@ -7,10 +7,13 @@ status checks pass:
 - `TypeScript type checking`
 - `Build API`
 - `Build Web`
-- `Devin Review` (added once the first automated review has run)
+- `Web image builds and serves the SPA`
+- `API image boots, migrates and serves requests`
+- `Devin Review`
 
 Force pushes to `main` and branch deletion are blocked; the repository admin can bypass the ruleset.
 
-Devin Review runs automatically on every pull request and posts its result as a status check.
-With GitHub auto-merge enabled on a pull request, the merge happens on its own as soon as every
-required check is green, and the branch is deleted afterwards.
+Devin Review runs automatically on every pull request and posts its result as the `Devin Review`
+status check. The `Auto-merge` workflow turns on GitHub auto-merge for pull requests opened by the
+repository owner or by Devin, so a pull request squash-merges itself as soon as every required
+check is green, and its branch is deleted afterwards.
