@@ -11,12 +11,18 @@ locals {
 }
 
 resource "scaleway_rdb_instance" "db" {
-  project_id     = var.scw_project_id
-  region         = var.scw_region
-  name           = "${var.app_name}-db"
-  engine         = "PostgreSQL-${var.db_version}"
-  node_type      = var.db_instance_node_type
-  disable_backup = true
+  project_id = var.scw_project_id
+  region     = var.scw_region
+  name       = "${var.app_name}-db"
+  engine     = "PostgreSQL-${var.db_version}"
+  node_type  = var.db_instance_node_type
+
+  // Managed automated backups: Scaleway snapshots the instance on a schedule and
+  // prunes them after the retention window. See infra/railway/BACKUP-RESTORE.md.
+  disable_backup            = false
+  backup_schedule_frequency = var.db_backup_schedule_frequency
+  backup_schedule_retention = var.db_backup_schedule_retention
+  backup_same_region        = var.db_backup_same_region
   // Note: volume_size_in_gb is not supported with default lssd volume type
   // The volume size is determined by the node_type for lssd volumes
 
@@ -42,7 +48,7 @@ resource "scaleway_rdb_user" "db_user" {
   password    = local.effective_db_password
   // Set to true to grant admin privileges (CONNECT, CREATE, etc.)
   // This is safe for a dedicated application user on a private network
-  is_admin    = true
+  is_admin = true
 }
 
 // Build DATABASE_URL from the private network attachment IP

@@ -60,6 +60,24 @@ variable "db_volume_size_gb" {
   default     = 20
 }
 
+variable "db_backup_schedule_frequency" {
+  description = "How often (in hours) Scaleway takes an automated backup of the managed PostgreSQL instance."
+  type        = number
+  default     = 24
+}
+
+variable "db_backup_schedule_retention" {
+  description = "How long (in days) each automated Scaleway backup is retained before it is pruned."
+  type        = number
+  default     = 7
+}
+
+variable "db_backup_same_region" {
+  description = "Store automated backups in the same region as the instance. Set false to export backups to a different region for DR."
+  type        = bool
+  default     = true
+}
+
 variable "redis_managed_node_type" {
   description = "Managed Redis node type (cheapest plan)."
   type        = string

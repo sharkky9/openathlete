@@ -1,0 +1,138 @@
+name: Database backup
+
+# Automated logical backups for the self-hosted / Railway Postgres, plus a
+# self-contained restore-drill self-test that proves the scripts still work.
+#
+# - `backup`: runs on a daily schedule (and on demand). It dumps the production
+#   database referenced by the `BACKUP_DATABASE_URL` secret, verifies the dump
+#   restores into a scratch database, and uploads the dump as a retained
+#   artifact. If the secret is not configured the job skips cleanly (it does not
+#   fail), so the workflow is safe to merge before the secret exists.
+# - `drill-selftest`: runs on PRs that touch the backup tooling and on demand. It
+#   spins up an ephemeral Postgres, seeds sample data, then runs the exact same
+#   backup + restore-drill scripts end to end — no secrets required.
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC daily
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/backup/**'
+      - '.github/workflows/db-backup.yml'
+
+concurrency:
+  group: db-backup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Back up production database
+    # Only meaningful on schedule / manual dispatch, not on PRs.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Skip if no backup connection string is configured
+        id: guard
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          if [ -z "${BACKUP_DATABASE_URL}" ]; then
+            echo "BACKUP_DATABASE_URL secret is not set — skipping backup."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Take backup
+        if: steps.guard.outputs.run == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_DIR: ${{ github.workspace }}/backups
+          RETENTION_DAYS: '0' # artifact retention is handled by upload-artifact
+        run: bash infra/backup/pg-backup.sh
+
+      - name: Restore drill (verify the backup restores)
+        if: steps.guard.outputs.run == 'true'
+        env:
+          # Admin connection: same server, default `postgres` database.
+          ADMIN_URL: ${{ secrets.BACKUP_ADMIN_URL }}
+          BACKUP_DIR: ${{ github.workspace }}/backups
+        run: |
+          if [ -z "${ADMIN_URL}" ]; then
+            echo "BACKUP_ADMIN_URL not set — skipping restore drill for this run." >&2
+            exit 0
+          fi
+          bash infra/backup/restore-drill.sh
+
+      - name: Upload backup artifact
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-backup-${{ github.run_id }}
+          path: ${{ github.workspace }}/backups/*.dump
+          retention-days: 7
+          if-no-files-found: error
+
+  drill-selftest:
+    name: Backup + restore-drill self-test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: openathlete
+          POSTGRES_PASSWORD: openathlete_ci_password
+          POSTGRES_DB: openathlete
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U openathlete"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://openathlete:openathlete_ci_password@localhost:5432/openathlete
+      ADMIN_URL: postgresql://openathlete:openathlete_ci_password@localhost:5432/postgres
+      BACKUP_DIR: ${{ github.workspace }}/backups
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Seed sample data
+        run: |
+          psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS vector;
+          CREATE TABLE IF NOT EXISTS "User" (
+            id serial PRIMARY KEY,
+            email text NOT NULL UNIQUE,
+            created_at timestamptz NOT NULL DEFAULT now()
+          );
+          INSERT INTO "User" (email) VALUES
+            ('drill-1@example.com'),
+            ('drill-2@example.com')
+          ON CONFLICT DO NOTHING;
+          SQL
+
+      - name: Take backup
+        run: bash infra/backup/pg-backup.sh
+
+      - name: Restore drill
+        env:
+          EXPECTED_TABLES: 'User'
+          VERIFY_SOURCE_URL: ${{ env.DATABASE_URL }}
+        run: bash infra/backup/restore-drill.sh

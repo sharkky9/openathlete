@@ -61,3 +61,7 @@ google-services.json
 lab
 repomix-output.xml
 .scannerwork
+
+# Database backups (created by infra/backup scripts)
+backups/
+*.dump
