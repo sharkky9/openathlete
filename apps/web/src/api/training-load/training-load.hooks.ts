@@ -45,7 +45,7 @@ export const useTrainingLoadByPeriod = (
   athleteId?: number,
   opt?: QueryOptions<
     Awaited<ReturnType<typeof TrainingLoadAPI.getTrainingLoadByPeriod>>
-  >,
+  > & { enabled?: boolean },
 ) =>
   useQuery({
     ...opt,
@@ -63,6 +63,7 @@ export const useTrainingLoadByPeriod = (
       endDate.toISOString(),
       athleteId,
     ],
+    enabled: (opt?.enabled ?? true) && athleteId !== undefined,
   });
 
 export const useTrainingLoadMetrics = (
@@ -71,7 +72,7 @@ export const useTrainingLoadMetrics = (
   athleteId?: number,
   opt?: QueryOptions<
     Awaited<ReturnType<typeof TrainingLoadAPI.getTrainingLoadMetrics>>
-  >,
+  > & { enabled?: boolean },
 ) =>
   useQuery({
     ...opt,
@@ -87,6 +88,7 @@ export const useTrainingLoadMetrics = (
       targetDate?.toISOString(),
       athleteId,
     ],
+    enabled: (opt?.enabled ?? true) && athleteId !== undefined,
   });
 
 export const useTrainingLoadHistory = (
@@ -96,7 +98,7 @@ export const useTrainingLoadHistory = (
   athleteId?: number,
   opt?: QueryOptions<
     Awaited<ReturnType<typeof TrainingLoadAPI.getTrainingLoadHistory>>
-  >,
+  > & { enabled?: boolean },
 ) =>
   useQuery({
     ...opt,
@@ -114,6 +116,7 @@ export const useTrainingLoadHistory = (
       endDate.toISOString(),
       athleteId,
     ],
+    enabled: (opt?.enabled ?? true) && athleteId !== undefined,
   });
 
 export const useWeeklyLoadSummaryQuery = (
