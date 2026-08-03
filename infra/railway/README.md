@@ -67,6 +67,5 @@ preview. Railway destroys the environment when the PR is merged or closed.
 
 ## Related docs
 
-- `BACKUP-RESTORE.md` — backup schedule, restore procedure and restore drill.
 - `../../.github/workflows/deployment-smoke.yml` — CI that builds both production images, runs the
   migrations and smoke-tests signup/login before a PR can merge.
