@@ -3,6 +3,16 @@
 Deployment configuration for running this fork of OpenAthlete on [Railway](https://railway.com).
 Everything in this directory is deployment packaging only — no application behaviour is changed.
 
+## Deployed environment
+
+| Environment | Service | URL                                        |
+| ----------- | ------- | ------------------------------------------ |
+| production  | `web`   | https://ultracully.up.railway.app          |
+| production  | `api`   | https://ultracully-api.up.railway.app      |
+
+The Railway-generated subdomains were renamed to `ultracully*`; renaming the `api` domain requires a
+`web` rebuild because `VITE_API_BASE_URL` is baked in at build time.
+
 ## Service topology (per environment)
 
 | Railway service | Source                                      | Public | Notes                                              |
