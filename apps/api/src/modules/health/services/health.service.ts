@@ -74,6 +74,9 @@ export class HealthService implements OnModuleDestroy {
   private async checkRedis(): Promise<DependencyCheck> {
     try {
       const client = this.getRedisClient();
+      if (client.status === 'wait' || client.status === 'end') {
+        await this.withTimeout(client.connect(), 'redis');
+      }
       await this.withTimeout(client.ping(), 'redis');
       return { status: 'up' };
     } catch (error) {
@@ -90,7 +93,9 @@ export class HealthService implements OnModuleDestroy {
         maxRetriesPerRequest: 1,
         connectTimeout: CHECK_TIMEOUT_MS,
         commandTimeout: CHECK_TIMEOUT_MS,
-        retryStrategy: () => null,
+        // Keep reconnecting for the lifetime of the process: a check that gives
+        // up on the first outage would report Redis down forever afterwards.
+        retryStrategy: (times: number) => Math.min(times * 200, 5000),
       });
       this.redisClient.on('error', (error: Error) => {
         this.logger.debug(`Redis health client error: ${error.message}`);

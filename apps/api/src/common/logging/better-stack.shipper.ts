@@ -22,6 +22,7 @@ const FLUSH_INTERVAL_MS = 2000;
 const MAX_BATCH_SIZE = 100;
 const MAX_BUFFER_SIZE = 1000;
 const REQUEST_TIMEOUT_MS = 5000;
+const TERMINATION_SIGNALS: NodeJS.Signals[] = ['SIGTERM', 'SIGINT'];
 
 /**
  * Buffers log events and ships them to the Better Stack HTTP ingestion API in
@@ -41,12 +42,13 @@ export class BetterStackLogShipper {
     }, FLUSH_INTERVAL_MS);
     this.timer.unref();
 
-    const shutdown = () => {
+    for (const signal of TERMINATION_SIGNALS) {
+      const handler = () => this.handleSignal(signal, handler);
+      process.once(signal, handler);
+    }
+    process.once('beforeExit', () => {
       void this.shutdown();
-    };
-    process.once('SIGTERM', shutdown);
-    process.once('SIGINT', shutdown);
-    process.once('beforeExit', shutdown);
+    });
   }
 
   enqueue(event: BetterStackLogEvent): void {
@@ -71,6 +73,21 @@ export class BetterStackLogShipper {
     }
     await this.flush();
     this.stopped = true;
+  }
+
+  /**
+   * Flushes pending events and then hands the signal back. Listening for a
+   * termination signal disables Node's default "terminate" behaviour, so the
+   * signal is re-raised once no other listener (e.g. Nest shutdown hooks)
+   * remains — otherwise the process would never exit on SIGTERM.
+   */
+  private handleSignal(signal: NodeJS.Signals, handler: () => void): void {
+    void this.shutdown().finally(() => {
+      process.removeListener(signal, handler);
+      if (process.listenerCount(signal) === 0) {
+        process.kill(process.pid, signal);
+      }
+    });
   }
 
   private async flush(): Promise<void> {
