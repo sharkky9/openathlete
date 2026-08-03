@@ -20,9 +20,10 @@ decode_secret() {
     fi
   fi
   
-  # Try to decode from base64
-  DECODED=$(echo "$var_value" | base64 -d 2>/dev/null)
-  if [ $? -eq 0 ] && [ -n "$DECODED" ]; then
+  # Try to decode from base64. `base64 -d` fails on values that are not valid
+  # base64 (most plain-text keys), which must not abort the script under `set -e`.
+  DECODED=$(echo "$var_value" | base64 -d 2>/dev/null) || DECODED=""
+  if [ -n "$DECODED" ]; then
     # If expected pattern is provided, verify decoded value matches
     if [ -n "$expected_pattern" ]; then
       if echo "$DECODED" | grep -qE "$expected_pattern"; then
@@ -48,26 +49,31 @@ decode_secret() {
 
 # Decode DATABASE_URL
 if [ -z "$DATABASE_URL" ]; then
+  echo "DATABASE_URL is not set" >&2
   exit 1
 fi
 
 if ! decode_secret "DATABASE_URL" '^(postgresql|postgres)://'; then
+  echo "DATABASE_URL is neither a postgres URL nor base64-encoded one" >&2
   exit 1
 fi
 
 PROTOCOL=$(echo "$DATABASE_URL" | cut -d: -f1)
 if [ "$PROTOCOL" != "postgresql" ] && [ "$PROTOCOL" != "postgres" ]; then
+  echo "DATABASE_URL has unsupported protocol '$PROTOCOL'" >&2
   exit 1
 fi
 
 # Decode REDIS_URL
 if [ -n "$REDIS_URL" ]; then
   if ! decode_secret "REDIS_URL" '^redis://'; then
+    echo "REDIS_URL is neither a redis URL nor a base64-encoded one" >&2
     exit 1
   fi
   
   PROTOCOL=$(echo "$REDIS_URL" | cut -d: -f1)
   if [ "$PROTOCOL" != "redis" ]; then
+    echo "REDIS_URL has unsupported protocol '$PROTOCOL'" >&2
     exit 1
   fi
 fi
