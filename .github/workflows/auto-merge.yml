@@ -1,0 +1,28 @@
+name: Auto-merge
+
+# Turns on GitHub auto-merge for pull requests opened by the repository owner or
+# by Devin, so they land on their own once every required check on main is green
+# (CI plus the Devin Review status check).
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.draft == false &&
+      (github.event.pull_request.user.login == 'sharkky9' ||
+       github.event.pull_request.user.login == 'devin-ai-integration[bot]')
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
