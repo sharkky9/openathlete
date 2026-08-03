@@ -58,8 +58,13 @@ export class BetterStackLogger extends ConsoleLogger {
       typeof params[params.length - 1] === 'string' && params.length > 0
         ? (params.pop() as string)
         : undefined;
+    // Nest pads context-bound calls with an `undefined` placeholder when no
+    // stack was passed, which would otherwise ship as the string "undefined".
+    const stackParts = params.filter(
+      (param) => param !== undefined && param !== null,
+    );
     const stack =
-      params.length > 0 ? params.map(stringify).join('\n') : undefined;
+      stackParts.length > 0 ? stackParts.map(stringify).join('\n') : undefined;
 
     this.shipper.enqueue({
       dt: new Date().toISOString(),

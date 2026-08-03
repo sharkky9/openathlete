@@ -14,16 +14,28 @@ export interface DependencyCheck {
   error?: string;
 }
 
+/**
+ * Internal view of readiness. Only `status` is exposed: the per-dependency
+ * detail stays in the logs, which are shipped to Better Stack.
+ */
 export interface ReadinessReport {
   status: 'ok' | 'error';
-  uptime: number;
   checks: {
     database: DependencyCheck;
     redis: DependencyCheck;
   };
 }
 
+export interface PublicReadiness {
+  status: ReadinessReport['status'];
+}
+
 const CHECK_TIMEOUT_MS = 3000;
+
+// The probe is unauthenticated, so results are reused for a short window: an
+// anonymous caller cannot turn request volume into Postgres/Redis load, while
+// monitors (60s+ intervals) still observe fresh state.
+const CACHE_TTL_MS = 5000;
 
 // The endpoint is unauthenticated and driver errors name the connection target
 // (host, port, database), so the detail is logged instead of returned.
@@ -34,6 +46,9 @@ export class HealthService implements OnModuleDestroy {
   private readonly logger = new Logger(HealthService.name);
   private redisClient: Redis | null = null;
   private redisConnecting: Promise<void> | null = null;
+  private cachedReadiness: { report: ReadinessReport; at: number } | null =
+    null;
+  private pendingReadiness: Promise<ReadinessReport> | null = null;
 
   constructor(
     private readonly prismaService: PrismaService,
@@ -41,6 +56,26 @@ export class HealthService implements OnModuleDestroy {
   ) {}
 
   async getReadiness(): Promise<ReadinessReport> {
+    const cached = this.cachedReadiness;
+    if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+      return cached.report;
+    }
+
+    if (!this.pendingReadiness) {
+      this.pendingReadiness = this.runChecks()
+        .then((report) => {
+          this.cachedReadiness = { report, at: Date.now() };
+          return report;
+        })
+        .finally(() => {
+          this.pendingReadiness = null;
+        });
+    }
+
+    return this.pendingReadiness;
+  }
+
+  private async runChecks(): Promise<ReadinessReport> {
     const [database, redis] = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
@@ -49,11 +84,7 @@ export class HealthService implements OnModuleDestroy {
     const status =
       database.status === 'up' && redis.status === 'up' ? 'ok' : 'error';
 
-    return {
-      status,
-      uptime: Math.round(process.uptime()),
-      checks: { database, redis },
-    };
+    return { status, checks: { database, redis } };
   }
 
   async onModuleDestroy() {
@@ -89,18 +120,19 @@ export class HealthService implements OnModuleDestroy {
   }
 
   /**
-   * Opens the lazily created client, sharing a single in-flight attempt so that
-   * concurrent readiness requests never race on `connect()` (ioredis rejects a
-   * second call with "Redis is already connecting/connected").
+   * Waits until the lazily created client is usable. Every caller shares a
+   * single attempt: concurrent readiness requests must neither race on
+   * `connect()` (ioredis rejects a second call) nor issue a command while the
+   * socket is still opening (offline queueing is disabled, so that fails).
    */
   private async ensureConnected(client: Redis): Promise<void> {
-    if (client.status !== 'wait' && client.status !== 'end') {
+    if (client.status === 'ready') {
       return;
     }
 
     if (!this.redisConnecting) {
       this.redisConnecting = this.withTimeout(
-        client.connect(),
+        openConnection(client),
         'redis',
       ).finally(() => {
         this.redisConnecting = null;
@@ -149,6 +181,35 @@ export class HealthService implements OnModuleDestroy {
       }
     }
   }
+}
+
+/**
+ * Resolves once the client is ready, whether it still has to be opened or is
+ * already opening (initial connect or an automatic reconnect).
+ */
+async function openConnection(client: Redis): Promise<void> {
+  if (client.status === 'wait' || client.status === 'end') {
+    await client.connect();
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      client.off('ready', onReady);
+      client.off('error', onError);
+    };
+
+    client.once('ready', onReady);
+    client.once('error', onError);
+  });
 }
 
 function toMessage(error: unknown): string {

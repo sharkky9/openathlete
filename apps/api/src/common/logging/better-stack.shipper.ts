@@ -32,7 +32,7 @@ const TERMINATION_SIGNALS: NodeJS.Signals[] = ['SIGTERM', 'SIGINT'];
 export class BetterStackLogShipper {
   private buffer: BetterStackLogEvent[] = [];
   private timer: NodeJS.Timeout | null = null;
-  private inFlight: Promise<void> = Promise.resolve();
+  private inFlight: Promise<void> | null = null;
   private hasWarned = false;
   private stopped = false;
 
@@ -94,14 +94,25 @@ export class BetterStackLogShipper {
     });
   }
 
-  private async flush(): Promise<void> {
+  /**
+   * Sends at most one batch at a time. Queueing batches behind a slow ingestion
+   * endpoint would retain them outside `buffer` and defeat its size cap, so
+   * events stay buffered (and the oldest are dropped) until the socket frees up.
+   */
+  private flush(): Promise<void> {
+    if (this.inFlight) {
+      return this.inFlight;
+    }
     if (this.buffer.length === 0) {
-      return;
+      return Promise.resolve();
     }
 
     const batch = this.buffer.splice(0, MAX_BATCH_SIZE);
-    this.inFlight = this.inFlight.then(() => this.send(batch));
-    await this.inFlight;
+    this.inFlight = this.send(batch).finally(() => {
+      this.inFlight = null;
+    });
+
+    return this.inFlight;
   }
 
   private async send(batch: BetterStackLogEvent[]): Promise<void> {

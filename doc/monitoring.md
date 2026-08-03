@@ -15,23 +15,19 @@ and the alerting policy. Deployment/provisioning itself is covered by
 - The platform health check for `api` points at `/health` (liveness). It intentionally does
   **not** hit dependencies: a Postgres blip should not make Railway kill and restart the API.
 - `/health/ready` is what uptime monitoring and manual triage use to tell "process alive" from
-  "able to serve traffic". Each dependency check has a 3 s timeout, and the response body names
-  the failing dependency:
+  "able to serve traffic". Each dependency check has a 3 s timeout.
 
-  ```json
-  {
-    "status": "error",
-    "uptime": 412,
-    "checks": {
-      "database": { "status": "up" },
-      "redis": { "status": "down", "error": "unreachable" }
-    }
-  }
+  Because the endpoint is unauthenticated it only reports the aggregate status —
+  `{"status":"ok"}` with `200`, `{"status":"error"}` with `503` — and nothing about the
+  infrastructure behind it. *Which* dependency failed, and the driver message naming hosts,
+  ports and database names, goes to the API logs (and therefore Better Stack):
+
+  ```text
+  WARN [HealthService] Redis readiness check failed: connect ECONNREFUSED ...
   ```
 
-  The endpoint is unauthenticated, so the `error` field is always the constant
-  `"unreachable"`; the driver message (which names hosts, ports and database
-  names) is written to the API logs instead, and shipped to Better Stack.
+  Results are cached for 5 s and concurrent requests share one check, so anonymous traffic
+  cannot amplify into Postgres/Redis load.
 
 - The `web` container is a static nginx SPA; `/healthz` is answered by nginx directly so
   monitoring never depends on the JS bundle.
@@ -111,8 +107,9 @@ JSON file:
 
 1. **Liveness alert** — the process is down or unreachable. Check the platform deploy logs for a
    crash loop; `/health` has no dependencies, so a failure is the process or the network.
-2. **Readiness alert, liveness OK** — a dependency is down. `curl $API_URL/health/ready` and read
-   `checks.database` / `checks.redis`, then check the Postgres/Redis services.
+2. **Readiness alert, liveness OK** — a dependency is down. The response only says `error`; search
+   the API logs for `readiness check failed` (Better Stack Live tail) to see whether Postgres or
+   Redis is the culprit, then check that service.
 3. **Error-rate alert** — open Better Stack Live tail filtered on `level:error` and the matching
    Better Stack error tracking issue for the stack trace.
 4. **Web availability alert with API healthy** — the SPA container or its domain, not the backend.
