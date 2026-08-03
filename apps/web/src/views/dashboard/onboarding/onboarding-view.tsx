@@ -55,6 +55,7 @@ interface OnboardingData {
 
 const ONBOARDING_STORAGE_KEY = 'openathlete_onboarding_data';
 const ONBOARDING_STEP_KEY = 'openathlete_onboarding_step';
+const ONBOARDING_COACH_SEEDED_KEY = 'openathlete_onboarding_coach_seeded';
 
 // Load onboarding data from localStorage
 const loadOnboardingData = (): OnboardingData | null => {
@@ -103,11 +104,31 @@ const saveOnboardingStep = (stepIndex: number) => {
   }
 };
 
+// Whether the coach role has already been pre-selected once for this browser,
+// so a deliberate deselection is never undone by a reload
+const hasSeededCoachRole = (): boolean => {
+  try {
+    return localStorage.getItem(ONBOARDING_COACH_SEEDED_KEY) === 'true';
+  } catch (error) {
+    console.error('Failed to read coach role seed from localStorage:', error);
+    return true;
+  }
+};
+
+const markCoachRoleSeeded = () => {
+  try {
+    localStorage.setItem(ONBOARDING_COACH_SEEDED_KEY, 'true');
+  } catch (error) {
+    console.error('Failed to save coach role seed to localStorage:', error);
+  }
+};
+
 // Clear onboarding data from localStorage
 const clearOnboardingStorage = () => {
   try {
     localStorage.removeItem(ONBOARDING_STORAGE_KEY);
     localStorage.removeItem(ONBOARDING_STEP_KEY);
+    localStorage.removeItem(ONBOARDING_COACH_SEEDED_KEY);
   } catch (error) {
     console.error('Failed to clear onboarding data from localStorage:', error);
   }
@@ -142,15 +163,12 @@ export function OnboardingView() {
 
   // A user who signed up from a coach invitation already coaches an athlete:
   // pre-select the coach role so the selection they confirm matches reality.
-  // Only on a fresh onboarding, so a deliberate deselection is not undone.
-  const hadStoredData = useRef(loadOnboardingData() !== null);
-  const coachRoleSeeded = useRef(false);
-
+  // Seeded at most once, so a deliberate deselection survives a reload.
   useEffect(() => {
-    if (hadStoredData.current || coachRoleSeeded.current || !coachesAthletes) {
+    if (!coachesAthletes || hasSeededCoachRole()) {
       return;
     }
-    coachRoleSeeded.current = true;
+    markCoachRoleSeeded();
     setData((d) =>
       d.roles.includes('COACH') ? d : { ...d, roles: [...d.roles, 'COACH'] },
     );
