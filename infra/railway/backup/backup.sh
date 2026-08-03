@@ -30,13 +30,17 @@ esac
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DUMP="/tmp/${PREFIX}-${STAMP}.dump"
 
+# curl's config parser treats \ and " inside a quoted value as escapes.
+CURL_USER="$(printf '%s:%s' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" |
+  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+
 s3() {
   # s3 <method> <key> [curl args...]
   # Credentials go in through a config on stdin so they never reach argv.
   method="$1"
   key="$2"
   shift 2
-  printf 'user = "%s:%s"\n' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" |
+  printf 'user = "%s"\n' "$CURL_USER" |
     curl --config - --fail --silent --show-error \
       --aws-sigv4 "aws:amz:${REGION}:s3" \
       --request "$method" \
@@ -59,8 +63,10 @@ s3 PUT "/${PREFIX}/latest" --upload-file /tmp/latest >/dev/null
 if [ "$RETENTION_DAYS" -gt 0 ]; then
   CUTOFF="$(date -u -d "@$(($(date -u +%s) - RETENTION_DAYS * 86400))" +%Y%m%dT%H%M%SZ)"
   echo "Pruning dumps older than ${CUTOFF}"
-  s3 GET "?list-type=2&prefix=${PREFIX}/" |
-    tr '<' '\n' | sed -n 's|^Key>||p' |
+  # Listed separately so a failed listing fails the run instead of silently
+  # pruning nothing.
+  s3 GET "?list-type=2&prefix=${PREFIX}/" >/tmp/listing
+  tr '<' '\n' </tmp/listing | sed -n 's|^Key>||p' |
     while read -r key; do
       key="${key#/}"
       name="${key##*/}"

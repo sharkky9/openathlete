@@ -23,12 +23,16 @@ case "${BUCKET_URL_STYLE:-virtual-host}" in
   *) BASE_URL="${BUCKET_ENDPOINT%%://*}://${BUCKET_NAME}.${BUCKET_ENDPOINT#*://}" ;;
 esac
 
+# curl's config parser treats \ and " inside a quoted value as escapes.
+CURL_USER="$(printf '%s:%s' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" |
+  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+
 s3() {
   # Credentials go in through a config on stdin so they never reach argv.
   method="$1"
   key="$2"
   shift 2
-  printf 'user = "%s:%s"\n' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" |
+  printf 'user = "%s"\n' "$CURL_USER" |
     curl --config - --fail --silent --show-error \
       --aws-sigv4 "aws:amz:${REGION}:s3" \
       --request "$method" \
