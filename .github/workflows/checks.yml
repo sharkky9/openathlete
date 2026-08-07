@@ -47,8 +47,15 @@ jobs:
         uses: ./.github/actions/setup
 
       # `pnpm website build` runs the Paraglide compile itself (see the package
-      # `build` script), so only the shared library has to be built up front —
-      # same shape as the Build Web job in build.yml.
+      # `build` script), but Next type-checks everything the app pulls in, which
+      # reaches `libs/database/client.ts` -> `./generated/client`. That is Prisma
+      # output, so it has to be generated first or the build fails with
+      # "Cannot find module './generated/client'". Same two setup steps as the
+      # Build API job in build.yml.
+      - name: Generate Prisma client
+        run: pnpm database run db:generate
+        shell: bash
+
       - name: Build shared library
         run: pnpm shared build
         shell: bash
@@ -60,15 +67,15 @@ jobs:
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
-    # Non-blocking on purpose. The tree already trips this: as of this commit
-    # `pnpm audit --audit-level=high --prod` reports 119 high and 8 critical
-    # advisories, almost all of them deep transitive dependencies of packages
-    # like @getbrevo/brevo and @mastra/core. Making it required today would wedge
-    # every pull request on debt none of them introduced. This job exists so the
-    # number is visible and so a *new* advisory is noticed; drop
-    # continue-on-error (and add the check to the ruleset) once the count is
-    # down to something a pull request can be held to.
-    continue-on-error: true
+    # Reports on the delta, not the absolute count. A plain
+    # `pnpm audit --audit-level=high --prod` is red today and stays red: the
+    # production tree carries ~96 distinct high/critical advisories, almost all
+    # of them deep transitive dependencies of @getbrevo/brevo and @mastra/core.
+    # A permanently-red check just teaches people to ignore checks, and a
+    # permanently-suppressed one is no better. So the known set is recorded in
+    # .github/dependency-audit-baseline.json and this job fails only on
+    # advisories that are not in it. The full list is printed every run either
+    # way, so the number stays visible.
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -76,8 +83,8 @@ jobs:
       - name: Setup environment
         uses: ./.github/actions/setup
 
-      - name: Audit production dependencies
-        run: pnpm audit --audit-level=high --prod
+      - name: Audit production dependencies against the baseline
+        run: node scripts/dependency-audit.js
         shell: bash
 
   secret-scan:
