@@ -4,10 +4,29 @@ import { ENV } from '../environment.enum';
 import { NODE_ENV } from '../node-environment.enum';
 
 /**
+ * Marks a variable as optional while treating an empty string as "not set".
+ *
+ * Container runtimes routinely inject `VAR=` for variables the operator never
+ * defined (docker compose expands an unset `${VAR}` to an empty string, and
+ * Railway does the same for blank service variables). Without this, a blank
+ * value would be validated as a malformed URL/email and abort boot, which is
+ * exactly the opposite of "the feature stays dark when unconfigured".
+ */
+const optional = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    schema.optional(),
+  ) as z.ZodEffects<z.ZodOptional<T>, T['_output'] | undefined, unknown>;
+
+/**
  * Environment variable validation schema for the API application.
- * This schema ensures all required environment variables are present and valid
- * before the application starts. Missing or invalid variables will cause
- * the application to fail with clear error messages.
+ *
+ * Only genuinely required infrastructure variables are mandatory: ENV,
+ * NODE_ENV, DATABASE_URL, JWT_SECRET_KEY and HASH_PEPPER. Every third-party
+ * credential is optional — when one is absent the feature it powers stays
+ * dark and reports a clear error at request time, instead of preventing the
+ * application from booting. Values that *are* provided are still format
+ * checked, so a typo in a URL or email is still caught early.
  */
 export const ApiEnvSchema = z
   .object({
@@ -84,30 +103,22 @@ export const ApiEnvSchema = z
       .optional()
       .describe('Comma-separated list of allowed CORS origins'),
 
-    // Strava OAuth
-    STRAVA_CLIENT_ID: z
-      .string()
-      .min(1, 'STRAVA_CLIENT_ID is required for Strava integration')
-      .describe('Strava OAuth client ID'),
+    // Strava OAuth (optional — Strava stays disconnected when unset)
+    STRAVA_CLIENT_ID: optional(z.string()).describe(
+      'Strava OAuth client ID (optional)',
+    ),
 
-    STRAVA_CLIENT_SECRET: z
-      .string()
-      .min(1, 'STRAVA_CLIENT_SECRET is required for Strava integration')
-      .describe('Strava OAuth client secret'),
+    STRAVA_CLIENT_SECRET: optional(z.string()).describe(
+      'Strava OAuth client secret (optional)',
+    ),
 
-    STRAVA_REDIRECT_URI: z
-      .string()
-      .url('STRAVA_REDIRECT_URI must be a valid URL')
-      .min(1, 'STRAVA_REDIRECT_URI is required for Strava OAuth callback')
-      .describe('Strava OAuth redirect URI'),
+    STRAVA_REDIRECT_URI: optional(
+      z.string().url('STRAVA_REDIRECT_URI must be a valid URL'),
+    ).describe('Strava OAuth redirect URI (optional)'),
 
-    STRAVA_WEBHOOK_TOKEN: z
-      .string()
-      .min(
-        1,
-        'STRAVA_WEBHOOK_TOKEN is required for Strava webhook verification',
-      )
-      .describe('Token for verifying Strava webhook requests'),
+    STRAVA_WEBHOOK_TOKEN: optional(z.string()).describe(
+      'Token for verifying Strava webhook requests (optional)',
+    ),
 
     // Garmin OAuth (optional)
     GARMIN_CLIENT_ID: z
@@ -120,11 +131,9 @@ export const ApiEnvSchema = z
       .optional()
       .describe('Garmin OAuth client secret (optional)'),
 
-    GARMIN_REDIRECT_URI: z
-      .string()
-      .url('GARMIN_REDIRECT_URI must be a valid URL')
-      .optional()
-      .describe('Garmin OAuth redirect URI (optional)'),
+    GARMIN_REDIRECT_URI: optional(
+      z.string().url('GARMIN_REDIRECT_URI must be a valid URL'),
+    ).describe('Garmin OAuth redirect URI (optional)'),
 
     // Suunto OAuth (optional)
     SUUNTO_CLIENT_ID: z
@@ -137,11 +146,9 @@ export const ApiEnvSchema = z
       .optional()
       .describe('Suunto OAuth client secret (optional)'),
 
-    SUUNTO_REDIRECT_URI: z
-      .string()
-      .url('SUUNTO_REDIRECT_URI must be a valid URL')
-      .optional()
-      .describe('Suunto OAuth redirect URI (optional)'),
+    SUUNTO_REDIRECT_URI: optional(
+      z.string().url('SUUNTO_REDIRECT_URI must be a valid URL'),
+    ).describe('Suunto OAuth redirect URI (optional)'),
 
     SUUNTO_SUBSCRIPTION_KEY: z
       .string()
@@ -165,59 +172,44 @@ export const ApiEnvSchema = z
     //   .optional()
     //   .describe('Coros OAuth redirect URI (optional)'),
 
-    // Polar OAuth
-    POLAR_CLIENT_ID: z
-      .string()
-      .min(1, 'POLAR_CLIENT_ID is required for Polar integration')
-      .describe('Polar OAuth client ID'),
+    // Polar OAuth (optional — Polar stays disconnected when unset)
+    POLAR_CLIENT_ID: optional(z.string()).describe(
+      'Polar OAuth client ID (optional)',
+    ),
 
-    POLAR_CLIENT_SECRET: z
-      .string()
-      .min(1, 'POLAR_CLIENT_SECRET is required for Polar integration')
-      .describe('Polar OAuth client secret'),
+    POLAR_CLIENT_SECRET: optional(z.string()).describe(
+      'Polar OAuth client secret (optional)',
+    ),
 
-    POLAR_REDIRECT_URI: z
-      .string()
-      .url('POLAR_REDIRECT_URI must be a valid URL')
-      .min(1, 'POLAR_REDIRECT_URI is required for Polar OAuth callback')
-      .describe('Polar OAuth redirect URI'),
+    POLAR_REDIRECT_URI: optional(
+      z.string().url('POLAR_REDIRECT_URI must be a valid URL'),
+    ).describe('Polar OAuth redirect URI (optional)'),
 
-    POLAR_WEBHOOK_URL: z
-      .string()
-      .url('POLAR_WEBHOOK_URL must be a valid URL')
-      .min(1, 'POLAR_WEBHOOK_URL is required for Polar webhook configuration')
-      .describe('URL where Polar webhooks will be received'),
+    POLAR_WEBHOOK_URL: optional(
+      z.string().url('POLAR_WEBHOOK_URL must be a valid URL'),
+    ).describe('URL where Polar webhooks will be received (optional)'),
 
-    POLAR_WEBHOOK_SECRET_KEY: z
-      .string()
-      .min(
-        1,
-        'POLAR_WEBHOOK_SECRET_KEY is required for Polar webhook verification',
-      )
-      .describe('Secret key for verifying Polar webhook requests'),
+    POLAR_WEBHOOK_SECRET_KEY: optional(z.string()).describe(
+      'Secret key for verifying Polar webhook requests (optional)',
+    ),
 
-    // Email service (Brevo)
-    BREVO_API_KEY: z
-      .string()
-      .min(1, 'BREVO_API_KEY is required for sending emails')
-      .describe('Brevo (formerly Sendinblue) API key for email service'),
+    // Email service (Brevo) — optional; email sending no-ops when unset
+    BREVO_API_KEY: optional(z.string()).describe(
+      'Brevo (formerly Sendinblue) API key for email service (optional)',
+    ),
 
-    BREVO_FROM_EMAIL: z
-      .string()
-      .email('BREVO_FROM_EMAIL must be a valid email address')
-      .min(1, 'BREVO_FROM_EMAIL is required for sending emails')
-      .describe('Default sender email address for Brevo emails'),
+    BREVO_FROM_EMAIL: optional(
+      z.string().email('BREVO_FROM_EMAIL must be a valid email address'),
+    ).describe('Default sender email address for Brevo emails (optional)'),
 
-    // AI Services
-    OPENAI_API_KEY: z
-      .string()
-      .min(1, 'OPENAI_API_KEY is required for AI features')
-      .describe('OpenAI API key for AI-powered features'),
+    // AI Services — optional; AI endpoints fail at request time when unset
+    OPENAI_API_KEY: optional(z.string()).describe(
+      'OpenAI API key for AI-powered features (optional)',
+    ),
 
-    GOOGLE_GENERATIVE_AI_API_KEY: z
-      .string()
-      .min(1, 'GOOGLE_GENERATIVE_AI_API_KEY is required for Google AI features')
-      .describe('Google Generative AI API key'),
+    GOOGLE_GENERATIVE_AI_API_KEY: optional(z.string()).describe(
+      'Google Generative AI API key (optional)',
+    ),
 
     // AI Model Configuration (optional, uses defaults if not provided)
     AI_MODEL_EVENT_GENERATION: z
@@ -282,11 +274,9 @@ export const ApiEnvSchema = z
       ),
 
     // Firebase
-    FIREBASE_FUNCTIONS_URL: z
-      .string()
-      .url('FIREBASE_FUNCTIONS_URL must be a valid URL')
-      .optional()
-      .describe('Firebase Cloud Functions URL (optional)'),
+    FIREBASE_FUNCTIONS_URL: optional(
+      z.string().url('FIREBASE_FUNCTIONS_URL must be a valid URL'),
+    ).describe('Firebase Cloud Functions URL (optional)'),
 
     FIREBASE_SERVICE_ACCOUNT_JSON: z
       .string()
@@ -318,11 +308,11 @@ export const ApiEnvSchema = z
       .describe('Enable training load estimation processing'),
 
     // Monitoring & Error Tracking
-    BETTER_STACK_DSN: z
-      .string()
-      .url('BETTER_STACK_DSN must be a valid URL')
-      .optional()
-      .describe('Better Stack (Sentry) DSN for error tracking and monitoring'),
+    BETTER_STACK_DSN: optional(
+      z.string().url('BETTER_STACK_DSN must be a valid URL'),
+    ).describe(
+      'Better Stack (Sentry) DSN for error tracking and monitoring (optional)',
+    ),
 
     // Normalization processor configuration (optional)
     NORMALIZATION_MIN_MOVING_SPEED_MS: z

@@ -75,9 +75,9 @@ export class StravaProviderService
     return {
       authorizationUrl: 'https://www.strava.com/oauth/authorize',
       tokenUrl: 'https://www.strava.com/api/v3/oauth/token',
-      clientId: this.configService.get('STRAVA_CLIENT_ID'),
-      clientSecret: this.configService.get('STRAVA_CLIENT_SECRET'),
-      redirectUri: this.configService.get('STRAVA_REDIRECT_URI'),
+      clientId: this.configService.get('STRAVA_CLIENT_ID') || '',
+      clientSecret: this.configService.get('STRAVA_CLIENT_SECRET') || '',
+      redirectUri: this.configService.get('STRAVA_REDIRECT_URI') || '',
       scopes: ['read', 'activity:read_all'],
     };
   }

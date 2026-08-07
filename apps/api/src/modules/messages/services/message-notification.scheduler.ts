@@ -16,12 +16,14 @@ export class MessageNotificationScheduler {
   private readonly logger = new Logger(MessageNotificationScheduler.name);
   private readonly apiInstance: brevo.TransactionalEmailsApi;
   private readonly fromEmail: string;
+  private readonly emailEnabled: boolean;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService<ApiEnvSchemaType, true>,
   ) {
     const apiKey = configService.get('BREVO_API_KEY') ?? '';
+    this.emailEnabled = apiKey.length > 0;
     this.fromEmail =
       configService.get('BREVO_FROM_EMAIL') ?? 'noreply@openathlete.org';
     this.apiInstance = new brevo.TransactionalEmailsApi();
@@ -29,11 +31,22 @@ export class MessageNotificationScheduler {
       brevo.TransactionalEmailsApiApiKeys.apiKey,
       apiKey,
     );
+
+    if (!this.emailEnabled) {
+      this.logger.warn(
+        'BREVO_API_KEY is not set — batched message notification emails are disabled.',
+      );
+    }
   }
 
   // Run every minute to evaluate which threads need a grouped notification
   @Cron('* * * * *')
   async sendBatchedMessageNotifications() {
+    // Without an API key every send would 401, and because the participant's
+    // lastNotificationAt is only advanced after a successful send, the same
+    // threads would be retried every minute forever. Stay dark instead.
+    if (!this.emailEnabled) return;
+
     const appUrl = this.configService.get('APP_URL');
     if (!appUrl) return;
 

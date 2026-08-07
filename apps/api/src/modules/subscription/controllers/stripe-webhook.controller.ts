@@ -171,8 +171,7 @@ export class StripeWebhookController {
     const plan = planString as SubscriptionPlan;
 
     // Get user ID from customer metadata
-    const customer =
-      await this.stripeService['stripe'].customers.retrieve(customerId);
+    const customer = await this.stripeService.retrieveCustomer(customerId);
     if (customer.deleted || !('metadata' in customer)) {
       this.logger.error(`Customer not found or deleted: ${customerId}`);
       return;
