@@ -1,6 +1,10 @@
 import Stripe from 'stripe';
 
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { SubscriptionPlan } from '@openathlete/shared';
@@ -9,20 +13,27 @@ import { ApiEnvSchemaType } from '@openathlete/shared';
 @Injectable()
 export class StripeService {
   private readonly logger = new Logger(StripeService.name);
-  private readonly stripe: Stripe;
+  private readonly stripe: Stripe | null;
   private readonly priceIds: Record<SubscriptionPlan, string>;
 
   constructor(
     private readonly configService: ConfigService<ApiEnvSchemaType, true>,
   ) {
     const secretKey = this.configService.get('STRIPE_SECRET_KEY');
-    if (!secretKey) {
-      throw new Error('STRIPE_SECRET_KEY is not set');
-    }
 
-    this.stripe = new Stripe(secretKey, {
-      apiVersion: '2025-11-17.clover',
-    });
+    // Payments are optional. Without a secret key the service still registers
+    // so the DI graph (and everything that depends on SubscriptionModule, such
+    // as FeatureAccessGuard) keeps working; the billing calls themselves fail
+    // at request time via `client` instead of crashing the app at boot.
+    this.stripe = secretKey
+      ? new Stripe(secretKey, { apiVersion: '2025-11-17.clover' })
+      : null;
+
+    if (!this.stripe) {
+      this.logger.warn(
+        'STRIPE_SECRET_KEY is not set — payment features are disabled.',
+      );
+    }
 
     const priceIdsJson = this.configService.get('STRIPE_PRICE_IDS');
     if (!priceIdsJson) {
@@ -59,6 +70,26 @@ export class StripeService {
   }
 
   /**
+   * Whether payment processing is configured for this deployment.
+   */
+  get isConfigured(): boolean {
+    return this.stripe !== null;
+  }
+
+  /**
+   * The Stripe client, or a 503 if payments were never configured.
+   * Every call that actually talks to Stripe must go through this.
+   */
+  private get client(): Stripe {
+    if (!this.stripe) {
+      throw new ServiceUnavailableException(
+        'Payments are not configured on this deployment (STRIPE_SECRET_KEY is not set).',
+      );
+    }
+    return this.stripe;
+  }
+
+  /**
    * Create or retrieve a Stripe customer for a user
    */
   async getOrCreateCustomer(
@@ -66,7 +97,7 @@ export class StripeService {
     email: string,
   ): Promise<Stripe.Customer> {
     // Try to find existing customer by metadata
-    const existingCustomers = await this.stripe.customers.list({
+    const existingCustomers = await this.client.customers.list({
       email,
       limit: 1,
     });
@@ -80,7 +111,7 @@ export class StripeService {
     }
 
     // Create new customer
-    const customer = await this.stripe.customers.create({
+    const customer = await this.client.customers.create({
       email,
       metadata: {
         userId: userId.toString(),
@@ -91,10 +122,20 @@ export class StripeService {
   }
 
   /**
+   * Retrieve a Stripe customer by ID without throwing when it was deleted.
+   * Callers that need to distinguish the deleted case handle it themselves.
+   */
+  async retrieveCustomer(
+    customerId: string,
+  ): Promise<Stripe.Response<Stripe.Customer | Stripe.DeletedCustomer>> {
+    return await this.client.customers.retrieve(customerId);
+  }
+
+  /**
    * Retrieve a Stripe customer by ID
    */
   async getCustomer(customerId: string): Promise<Stripe.Customer> {
-    const customer = await this.stripe.customers.retrieve(customerId);
+    const customer = await this.client.customers.retrieve(customerId);
     if (customer.deleted || !('metadata' in customer)) {
       throw new Error(`Customer not found or deleted: ${customerId}`);
     }
@@ -102,7 +143,7 @@ export class StripeService {
   }
 
   async hasUsedTrial(customerId: string): Promise<boolean> {
-    const subscriptions = await this.stripe.subscriptions.list({
+    const subscriptions = await this.client.subscriptions.list({
       customer: customerId,
       limit: 100,
       status: 'all', // Include all statuses (active, canceled, past_due, etc.)
@@ -173,7 +214,7 @@ export class StripeService {
       };
     }
 
-    const session = await this.stripe.checkout.sessions.create(sessionConfig);
+    const session = await this.client.checkout.sessions.create(sessionConfig);
 
     return session;
   }
@@ -185,7 +226,7 @@ export class StripeService {
     customerId: string,
     returnUrl: string,
   ): Promise<Stripe.BillingPortal.Session> {
-    const session = await this.stripe.billingPortal.sessions.create({
+    const session = await this.client.billingPortal.sessions.create({
       customer: customerId,
       return_url: returnUrl,
     });
@@ -200,7 +241,7 @@ export class StripeService {
     customerId: string,
     limit = 10,
   ): Promise<Stripe.Invoice[]> {
-    const invoices = await this.stripe.invoices.list({
+    const invoices = await this.client.invoices.list({
       customer: customerId,
       limit,
     });
@@ -233,7 +274,7 @@ export class StripeService {
   ): Promise<Stripe.Subscription | null> {
     try {
       // Expand items to get price information
-      return await this.stripe.subscriptions.retrieve(subscriptionId, {
+      return await this.client.subscriptions.retrieve(subscriptionId, {
         expand: ['items.data.price'],
       });
     } catch (error) {
@@ -253,7 +294,7 @@ export class StripeService {
   async cancelSubscriptionAtPeriodEnd(
     subscriptionId: string,
   ): Promise<Stripe.Subscription> {
-    return await this.stripe.subscriptions.update(subscriptionId, {
+    return await this.client.subscriptions.update(subscriptionId, {
       cancel_at_period_end: true,
     });
   }
@@ -264,7 +305,7 @@ export class StripeService {
   async resumeSubscription(
     subscriptionId: string,
   ): Promise<Stripe.Subscription> {
-    return await this.stripe.subscriptions.update(subscriptionId, {
+    return await this.client.subscriptions.update(subscriptionId, {
       cancel_at_period_end: false,
     });
   }
@@ -287,7 +328,7 @@ export class StripeService {
     }
 
     // Update subscription with proration
-    return await this.stripe.subscriptions.update(subscriptionId, {
+    return await this.client.subscriptions.update(subscriptionId, {
       items: [
         {
           id: subscription.items.data[0].id,
@@ -313,7 +354,7 @@ export class StripeService {
       throw new Error('STRIPE_WEBHOOK_SECRET is not set');
     }
 
-    return this.stripe.webhooks.constructEvent(
+    return this.client.webhooks.constructEvent(
       payload,
       signature,
       webhookSecret,

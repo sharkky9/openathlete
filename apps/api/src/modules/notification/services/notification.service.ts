@@ -22,20 +22,36 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   private apiInstance: brevo.TransactionalEmailsApi;
   private apiKey: string;
+  private readonly fromEmail: string;
 
   constructor(
-    private configService: ConfigService<ApiEnvSchemaType, true>,
+    configService: ConfigService<ApiEnvSchemaType, true>,
     private readonly prisma: PrismaService,
   ) {
     this.apiKey = configService.get('BREVO_API_KEY') ?? '';
+    this.fromEmail =
+      configService.get('BREVO_FROM_EMAIL') ?? 'noreply@openathlete.org';
     this.apiInstance = new brevo.TransactionalEmailsApi();
     this.apiInstance.setApiKey(
       brevo.TransactionalEmailsApiApiKeys.apiKey,
       this.apiKey,
     );
+
+    if (!this.apiKey) {
+      this.logger.warn(
+        'BREVO_API_KEY is not set — transactional emails are disabled and will be skipped.',
+      );
+    }
   }
 
   async sendEmail<T extends EmailId>(payload: SendEmail<T>) {
+    if (!this.apiKey) {
+      this.logger.warn(
+        `Skipping "${payload.type}" email to ${payload.to}: BREVO_API_KEY is not set.`,
+      );
+      return;
+    }
+
     try {
       // Get user language from database, default to FR if user not found
       const user = await this.prisma.user.findUnique({
@@ -49,7 +65,7 @@ export class NotificationService {
       const sendSmtpEmail = new brevo.SendSmtpEmail();
       sendSmtpEmail.to = [{ email: payload.to }];
       sendSmtpEmail.sender = {
-        email: this.configService.get('BREVO_FROM_EMAIL'),
+        email: this.fromEmail,
       };
 
       const defaultSubject = emailLibrary[payload.type].defaultSubject;
