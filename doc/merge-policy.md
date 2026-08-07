@@ -34,7 +34,10 @@ signal and can be promoted to required checks later (that is a repository settin
 change in this tree):
 
 - `Format check`, `Website build`, `Dependency audit` and `Secret scan` (`.github/workflows/checks.yml`).
-  `Dependency audit` is deliberately `continue-on-error` for now.
+  `Dependency audit` reports on the delta rather than the absolute count: the ~96 distinct
+  high/critical advisories already in the production tree are recorded in
+  `.github/dependency-audit-baseline.json`, and the job fails only on advisories that are not in that
+  file. It prints the full list every run regardless.
 
 ## Devin Review is retired
 
