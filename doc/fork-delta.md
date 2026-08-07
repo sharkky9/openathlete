@@ -7,9 +7,9 @@ changes the delta.
 Last reconciled against upstream `main` at `64a660bb`.
 
 Files this fork adds in its own directories (`infra/railway/**`, `doc/fork-*.md`,
-`doc/merge-policy.md`, `.github/workflows/auto-merge.yml`, `.github/workflows/review-gate.yml`,
-`.github/workflows/deployment-smoke.yml`) cannot conflict and are described below only where their
-behaviour matters during an upgrade.
+`doc/merge-policy.md`, `.github/workflows/auto-merge.yml`, `.github/workflows/checks.yml`,
+`.github/workflows/tests.yml`, `.github/workflows/deployment-smoke.yml`) cannot conflict and are
+described below only where their behaviour matters during an upgrade.
 
 ## Railway deployment configuration
 
@@ -99,7 +99,8 @@ conflict-prone file in the delta; on conflict, take upstream's lockfile and re-r
 **Removal condition:** upstream ships `next >= 15.5.22`; drop the pin and take upstream's version.
 
 **Upgrade test:** `pnpm install --frozen-lockfile`, then `pnpm --filter @openathlete/website build`.
-CI builds the API and web apps only, so the website build has to be run locally during an upgrade.
+The `Website build` job in `.github/workflows/checks.yml` also runs this, so a broken website build
+now shows up on the pull request rather than only locally.
 
 ## Localized UI strings and date formatting
 
@@ -137,20 +138,47 @@ switcher.
 
 ## Merge policy automation
 
-**Reason:** the fork wants Devin-authored PRs to merge themselves once checks and Devin Review are
-clean.
+**Reason:** the fork wants PRs from its trusted authors to merge themselves once every required
+check is green, with no human approval in the loop.
 
-**Implementation:** `.github/workflows/auto-merge.yml`, `.github/workflows/review-gate.yml`,
-`doc/merge-policy.md`, and the `main-protection` ruleset (repository setting, not in the tree).
+**Implementation:** `.github/workflows/auto-merge.yml`, `doc/merge-policy.md`, and the
+`main-protection` ruleset (repository setting, not in the tree). The Devin review gate
+(`.github/workflows/review-gate.yml`) that used to sit alongside this has been deleted; Devin is no
+longer used here.
 
 **Upstream modifications:** none.
 
 **Upstream candidate:** no — this is repository governance.
 
-**Removal condition:** the fork stops using Devin Review or auto-merge.
+**Removal condition:** the fork stops using auto-merge.
 
 **Upgrade test:** none; verify required check names in the ruleset still match workflow job names
 after an upgrade renames any upstream job.
+
+## Supplementary CI checks (`checks.yml`)
+
+**Reason:** four checks the upstream workflows never ran — `pnpm format` (the script existed but was
+never wired to CI), the `apps/website` Next build (lint and `tsc --noEmit` do not catch a Next build
+failure), a production dependency audit and a secret scan.
+
+**Implementation:** `.github/workflows/checks.yml`, jobs `Format check`, `Website build`,
+`Dependency audit` and `Secret scan`. None of them are required checks on `main` yet — promoting one
+is a ruleset change, not a change in this tree. `Dependency audit` is `continue-on-error` because the
+existing tree already reports high and critical transitive advisories.
+
+`Format check` deliberately does not generate Paraglide or Prisma output: `pnpm format` is
+`prettier --check` over checked-in `src` only. `apps/web/.gitignore` gained a `/src/paraglide` entry
+for the same reason — Prettier reads the `.gitignore` next to its working directory and would
+otherwise check ~1000 generated files (`apps/website/.gitignore` already did this).
+
+**Upstream modifications:** `apps/web/.gitignore` (one added entry).
+
+**Upstream candidate:** yes for the website build job and the `.gitignore` entry; the audit and
+secret scan are fork policy.
+
+**Removal condition:** upstream adds equivalent jobs.
+
+**Upgrade test:** `pnpm format`, `pnpm website build`.
 
 ## Sidebar avatar no longer requests the shadcn demo asset
 
