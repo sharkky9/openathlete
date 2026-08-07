@@ -163,8 +163,23 @@ failure), a production dependency audit and a secret scan.
 
 **Implementation:** `.github/workflows/checks.yml`, jobs `Format check`, `Website build`,
 `Dependency audit` and `Secret scan`. None of them are required checks on `main` yet — promoting one
-is a ruleset change, not a change in this tree. `Dependency audit` is `continue-on-error` because the
-existing tree already reports high and critical transitive advisories.
+is a ruleset change, not a change in this tree.
+
+`Dependency audit` runs `node scripts/dependency-audit.js` rather than `pnpm audit` directly. A bare
+`pnpm audit --audit-level=high --prod` is red today and would stay red for a long time — the
+production tree carries ~96 distinct high/critical advisories, almost all deep transitive
+dependencies of `@getbrevo/brevo` and `@mastra/core`. A permanently-red check teaches people to
+ignore checks, and `continue-on-error` only hides it (at the job level it still reports the job as
+failed in the checks UI). So the known set is committed to
+`.github/dependency-audit-baseline.json` and the job fails only on high/critical advisories that are
+not in it. It catches a newly published advisory against something already in the tree, and any new
+high/critical advisory pulled in by a dependency change. It does not catch the baselined advisories
+themselves, or anything at moderate severity or below. Prune or extend the baseline with
+`node scripts/dependency-audit.js --update`.
+
+`Website build` generates the Prisma client before building. Next type-checks everything the app
+pulls in, which reaches `libs/database/client.ts` -> `./generated/client`; without
+`pnpm database run db:generate` the build fails with `Cannot find module './generated/client'`.
 
 `Format check` deliberately does not generate Paraglide or Prisma output: `pnpm format` is
 `prettier --check` over checked-in `src` only. `apps/web/.gitignore` gained a `/src/paraglide` entry
