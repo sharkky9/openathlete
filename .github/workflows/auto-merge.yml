@@ -1,8 +1,8 @@
 name: Auto-merge
 
-# Turns on GitHub auto-merge for pull requests opened by the repository owner or
-# by Devin, so they land on their own once every required check on main is green
-# (CI plus the Devin Review status check).
+# Turns on GitHub auto-merge for pull requests opened by one of the trusted
+# authors below, so they land on their own once every required check on main is
+# green.
 #
 # Auto-merge is a per-pull-request flag with no repository-wide equivalent, and
 # the pull_request_target run only fires for pull requests opened after this
@@ -32,6 +32,7 @@ jobs:
       github.event_name != 'pull_request_target' ||
       (github.event.pull_request.draft == false &&
        (github.event.pull_request.user.login == 'sharkky9' ||
+        github.event.pull_request.user.login == 'chrishandel-faire' ||
         github.event.pull_request.user.login == 'devin-ai-integration[bot]'))
     steps:
       - name: Enable auto-merge
@@ -50,7 +51,9 @@ jobs:
               --jq '.[]
                 | select(.isDraft == false)
                 | select(.autoMergeRequest == null)
-                | select(.author.login == "sharkky9" or .author.login == "app/devin-ai-integration")
+                | select(.author.login == "sharkky9"
+                         or .author.login == "chrishandel-faire"
+                         or .author.login == "app/devin-ai-integration")
                 | .number')
           fi
 
