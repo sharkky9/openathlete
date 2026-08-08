@@ -7,6 +7,7 @@ import { getPath } from '@/routes/paths';
 import {
   type OAuthProviderId,
   getFirebaseIdTokenForProvider,
+  isFirebaseAuthenticationConfigured,
 } from '@/utils/firebase-auth';
 import { cn } from '@/utils/shadcn';
 import { usePostHog } from 'posthog-js/react';
@@ -67,6 +68,8 @@ export function OAuthButtons({
 
   const isLoading =
     loginWithFirebaseMutation.isPending || pendingProvider !== null;
+
+  if (!isFirebaseAuthenticationConfigured()) return null;
 
   return (
     <div className={cn('grid gap-5', className)}>
