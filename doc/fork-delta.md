@@ -501,3 +501,111 @@ prisma db seed`, which must print `Running seed command ...`) against a local da
 the demo user through `POST /auth/login`. A failure here is a regression in the seed or in auth hashing.
 If upstream changes the hashing algorithm or pepper handling, this seed must be updated to match
 (compare against `user.service.ts`) — that is a required test update, not a product regression.
+
+## Unauthenticated API surface hardened
+
+**Reason:** issue #41. Three separate holes on the routes that need no credentials. Nothing bounded
+request rate anywhere in the API, so `POST /auth/login`, `POST /auth/firebase` and
+`POST /auth/refresh-token` accepted unlimited credential stuffing and token guessing, and
+`POST /user`, `POST /user/password-reset/request` and `POST /user/password-reset` let an anonymous
+caller send mail or write rows as fast as they could ask. `GET /auth/email-exists` answered, for any
+address, whether it had an account here — unauthenticated user enumeration, one request at a time.
+Swagger UI was mounted unconditionally at `/docs`, so production published a complete map of every
+route, payload shape and auth requirement. Separately, `apps/docs` documented rate limits
+(100/minute, 1000/hour, `X-RateLimit-*` headers) that were pure fiction: no throttling of any kind
+existed in the tree.
+
+**Implementation:** `apps/api/src/modules/auth/guards/throttle.guard.ts` (new, fork-owned) is a
+fixed-window per-client limiter with an opt-in `@Throttle({ limit, windowMs })` decorator built on
+`Reflector.createDecorator`, matching `UserTypes` next door; an untagged handler is never throttled,
+so applying the guard to a controller cannot silently start rejecting traffic on a route nobody
+reviewed. Buckets are keyed on client IP *and* `Class.handler`, so a login burst cannot exhaust the
+password-reset budget; the client comes from `req.ips[0]` (the forwarded client) falling back to
+`req.ip`. Counters live in this process, correct only while the API runs `numReplicas: 1` — see
+`infra/railway/api.railway.json`; scaling out multiplies every limit by the replica count and needs
+shared storage first. The map is swept of expired windows at most once every 30s and hard-capped at
+`MAX_TRACKED_CLIENTS = 10_000` with insertion-ordered eviction, so a flood from rotating source
+addresses degrades the limit instead of exhausting memory. Allowed responses carry
+`X-RateLimit-Limit` / `-Remaining` / `-Reset`; a rejection is `429` plus `Retry-After`.
+
+It is hand-rolled rather than `@nestjs/throttler` for one reason, and it is an environment
+constraint rather than a technical judgement: the session that wrote it commits through the GitHub
+API with file contents inline, and `pnpm-lock.yaml` is ~785KB, so no lockfile change could land and
+therefore no dependency could be added. `@nestjs/throttler` is the right answer and this guard is a
+stopgap standing in for it.
+
+`AuthController` carries `@UseGuards(ThrottleGuard)` at the class level (deliberately not a global
+`APP_GUARD`, which would also cover provider webhooks that burst legitimately) with per-route limits
+of 10/min on `login`, `firebase` and `invitation`, 20/min on `refresh-token` and 5/min on
+`email-exists`; `UserController` applies the guard on its three unauthenticated routes only, 5/min
+each, leaving token-gated routes alone. `ThrottleGuard` is registered as a provider in
+`auth.module.ts` so both controllers share one instance and therefore one set of counters, and is
+re-exported from `guards/index.ts`. `UserService` was dropped from `AuthController`'s constructor:
+`email-exists` was its only consumer there and `noUnusedLocals` fails on an unread property.
+
+`GET /auth/email-exists` is **neutralized in place, not deleted** — it throws `GoneException` (410)
+without reading the query parameter, and its Swagger annotations say so. Deleting it was the obvious
+move and was rejected on fork-maintenance grounds: `doc/fork-maintenance.md` warns that deleting an
+upstream file or route produces a modify/delete conflict every time upstream touches it, so the
+route stays and fails loudly rather than lying with a hardcoded `false`. The legitimate use case is
+already covered by the `409` that account creation returns for a taken address.
+
+`main.ts` mounts Swagger only when `configService.get('ENV') !== ENV.PROD` — gated on the app's own
+`ENV` rather than `NODE_ENV`, because staging and the deployment smoke test also run production
+builds — and sets `trust proxy` on the Express instance so `req.ips` holds the real client behind
+Railway's TLS terminator instead of putting every caller in one bucket.
+
+`apps/docs/content/docs/api/index.mdx` replaces the invented limits with the eight real per-route
+numbers, states that authenticated endpoints are not throttled, documents `Retry-After` alongside
+the `X-RateLimit-*` headers, adds `410` and `429` to the status list, and stops pointing readers at
+`https://api.openathlete.org/docs` for Swagger now that production does not serve it.
+
+`apps/api/package.json`'s Jest block gained a `moduleNameMapper` for the `src/*` path alias and an
+explicit `tsconfig: <rootDir>/../tsconfig.json` for `ts-jest`. `rootDir` is `src`, which holds no
+tsconfig, so ts-jest was falling back to its own defaults — without `emitDecoratorMetadata` from
+`apps/api/tsconfig.json`, Nest cannot resolve a controller's constructor dependencies in a test.
+
+**Upstream modifications:** `apps/api/src/main.ts`,
+`apps/api/src/modules/auth/auth.module.ts`,
+`apps/api/src/modules/auth/controllers/auth.controller.ts`,
+`apps/api/src/modules/auth/controllers/user.controller.ts`,
+`apps/api/src/modules/auth/guards/index.ts` (two added exports),
+`apps/api/package.json` (Jest block only),
+`apps/docs/content/docs/api/index.mdx`. The guard and both specs
+(`guards/throttle.guard.ts`, `guards/throttle.guard.spec.ts`,
+`controllers/auth.controller.spec.ts`) are added files in upstream-owned directories, so they cannot
+conflict. No upstream file is deleted.
+
+**Upstream candidate:** partly. The `email-exists` retirement and the production Swagger gate are
+both plain security fixes with no fork-specific behaviour and should be proposed upstream — though
+upstream, not being a fork, can simply delete the route rather than 410 it, and would want the
+`trust proxy` setting made configurable rather than assuming a proxy. The `apps/docs` correction
+goes with them: it documents upstream's API and is wrong today regardless of this fork. The guard
+itself is **not** an upstream candidate — upstream should add `@nestjs/throttler`, which it can do
+because it can change its own lockfile.
+
+**Removal condition:** for the guard, as soon as a `pnpm-lock.yaml` change can land in this fork:
+add `@nestjs/throttler`, replace `ThrottleGuard`/`Throttle` with `ThrottlerGuard`/`@Throttle`,
+delete `throttle.guard.ts` and `throttle.guard.spec.ts`, and keep the per-route limits and the
+`trust proxy` line. Do not carry this guard past that point — it is single-process, and the
+replica-count caveat above becomes a live bug the first time the API scales out. For the rest: drop
+the `email-exists` and Swagger parts once upstream ships equivalents, and the `apps/docs` table once
+upstream documents real limits. The Jest config lines go when upstream configures ts-jest itself.
+
+**Upgrade test:** `pnpm api test`. Two specs pin this delta.
+`apps/api/src/modules/auth/guards/throttle.guard.spec.ts` asserts the guard's own contract: untagged
+handlers pass unthrottled, the `limit + 1`-th request is `429` with a positive `Retry-After`, the
+limit/remaining/reset headers are set, budgets are separate per handler and per client address,
+`ips[0]` (not the proxy socket) is what bills a client, the budget returns after the window rolls
+over, and the tracked-client map stays at or under `MAX_TRACKED_CLIENTS` under an address-rotating
+flood of 10,500 distinct IPs. `apps/api/src/modules/auth/controllers/auth.controller.spec.ts` boots
+the real controller through `@nestjs/testing` and asserts the wiring: a 100-request burst at
+`POST /auth/login` yields exactly 10 non-429s followed by 90 `429`s *and* reaches `AuthService.login`
+exactly 10 times (a guard that counted but did not reject would pass a status-only check), the
+budget is restored after the window, and `GET /auth/email-exists` answers `410` without calling
+`UserService.exists` (a handler returning a hardcoded `false` would pass a status check while still
+burning a lookup). That spec imports the controller before the services on purpose — the auth barrel
+has an import cycle and entering through a service leaves `AuthService` undefined in
+`design:paramtypes`; if it starts failing to resolve `AuthService` after an upgrade, check the import
+order before anything else. Then, by hand: boot with `ENV=production` and confirm `/docs` 404s, boot
+with `ENV=development` and confirm it serves.
