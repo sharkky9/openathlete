@@ -48,8 +48,12 @@ export function ApiKeyConnectDialog({
   });
 
   const handleSubmit = () => {
-    if (!provider || !apiKey.trim()) return;
-    setCredentialsMutation.mutate({ provider, apiKey: apiKey.trim() });
+    if (!provider) return;
+    const trimmedApiKey = apiKey.trim();
+    setCredentialsMutation.mutate({
+      provider,
+      ...(trimmedApiKey && { apiKey: trimmedApiKey }),
+    });
   };
 
   const helpUrl = provider ? API_KEY_HELP_URL[provider] : undefined;
@@ -103,7 +107,7 @@ export function ApiKeyConnectDialog({
         <DialogFooter>
           <Button
             onClick={handleSubmit}
-            disabled={!apiKey.trim() || setCredentialsMutation.isPending}
+            disabled={setCredentialsMutation.isPending}
           >
             {m.connect()}
           </Button>

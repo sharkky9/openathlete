@@ -57,11 +57,11 @@ export class ProviderAPI {
     athleteId,
   }: {
     provider: ConnectorProvider;
-    apiKey: string;
+    apiKey?: string;
     athleteId?: string;
   }): Promise<void> {
     await client.post(routes.provider.setCredentials(provider), {
-      apiKey,
+      ...(apiKey && { apiKey }),
       ...(athleteId && { athleteId }),
     });
   }
