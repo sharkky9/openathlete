@@ -5,6 +5,8 @@ import {
 } from '@/api/provider';
 import { GarminLogo, StravaIcon } from '@/assets/icons';
 import { PolarLogo, SuuntoLogo } from '@/assets/icons/providers';
+import { ApiKeyConnectDialog } from '@/components/connectors/api-key-connect-dialog';
+import { isApiKeyProvider } from '@/components/connectors/api-key-providers';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -24,6 +26,7 @@ import { connectorProviderLabelMap } from '@/utils/label-map/core/connector-prov
 import { openOAuthUrl } from '@/utils/oauth';
 import { CheckCircle2, Link2, Link2Off } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { ConnectorProvider } from '@openathlete/shared';
@@ -37,6 +40,7 @@ interface ConnectorsListProps {
 }
 
 const DEFAULT_SUPPORTED_PROVIDERS: ConnectorProvider[] = [
+  'INTERVALS_ICU',
   'STRAVA',
   'GARMIN',
   'SUUNTO',
@@ -50,6 +54,8 @@ export function ConnectorsList({
   oauthConnectSource = 'settings',
 }: ConnectorsListProps) {
   const posthog = usePostHog();
+  const [apiKeyProvider, setApiKeyProvider] =
+    useState<ConnectorProvider | null>(null);
   const { data: connectedProviders = [], isLoading: isLoadingConnected } =
     useGetConnectedProvidersQuery();
 
@@ -97,6 +103,11 @@ export function ConnectorsList({
   };
 
   const handleConnect = (provider: ConnectorProvider) => {
+    // API-key providers (Intervals.icu) have no OAuth redirect: collect the key.
+    if (isApiKeyProvider(provider)) {
+      setApiKeyProvider(provider);
+      return;
+    }
     getOAuthUriMutation.mutate(provider);
   };
 
@@ -228,6 +239,18 @@ export function ConnectorsList({
           {m.onboarding_connectors_skip()}
         </Button>
       )}
+      <ApiKeyConnectDialog
+        provider={apiKeyProvider}
+        onOpenChange={(open) => {
+          if (!open) setApiKeyProvider(null);
+        }}
+        onConnected={(provider) => {
+          posthog?.capture(AnalyticsEvent.provider_connect_initiated, {
+            provider,
+            source: oauthConnectSource,
+          });
+        }}
+      />
     </div>
   );
 }

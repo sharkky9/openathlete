@@ -42,7 +42,15 @@ export interface OAuthConfig {
 export abstract class BaseProviderService {
   protected readonly logger: Logger;
   protected abstract readonly provider: ConnectorProvider;
-  protected abstract readonly oauthConfig: OAuthConfig;
+  /**
+   * OAuth configuration for providers that authenticate via an OAuth code exchange.
+   *
+   * Optional: some providers authenticate with a static, user-supplied API key
+   * (e.g. Intervals.icu) and have no authorization URL, client credentials or
+   * refresh flow at all. Those providers simply omit this member and override
+   * `getValidAccessToken()`; the OAuth helpers below throw if called on them.
+   */
+  protected abstract readonly oauthConfig?: OAuthConfig;
 
   constructor(
     protected readonly prisma: PrismaService,
@@ -52,19 +60,34 @@ export abstract class BaseProviderService {
   }
 
   /**
+   * Read the OAuth configuration, failing loudly for static-credential providers.
+   */
+  protected requireOAuthConfig(): OAuthConfig {
+    if (!this.oauthConfig) {
+      throw new Error(
+        `Provider ${this.provider} does not use OAuth (no oauthConfig defined)`,
+      );
+    }
+
+    return this.oauthConfig;
+  }
+
+  /**
    * Generate OAuth authorization URL
    * Can be overridden for providers with special requirements (e.g., PKCE)
    */
   getAuthorizationUri(state?: string): string {
+    const oauthConfig = this.requireOAuthConfig();
+
     const params = new URLSearchParams({
-      client_id: this.oauthConfig.clientId,
-      redirect_uri: this.oauthConfig.redirectUri,
+      client_id: oauthConfig.clientId,
+      redirect_uri: oauthConfig.redirectUri,
       response_type: 'code',
-      scope: this.oauthConfig.scopes.join(','),
+      scope: oauthConfig.scopes.join(','),
       ...(state && { state }),
     });
 
-    return `${this.oauthConfig.authorizationUrl}?${params.toString()}`;
+    return `${oauthConfig.authorizationUrl}?${params.toString()}`;
   }
 
   /**
@@ -72,15 +95,17 @@ export abstract class BaseProviderService {
    * Can be overridden for providers with special requirements (e.g., PKCE)
    */
   async exchangeCodeForTokens(code: string): Promise<OAuthTokenResponse> {
+    const oauthConfig = this.requireOAuthConfig();
+
     try {
       const { data } = await axios.post<OAuthTokenResponse>(
-        this.oauthConfig.tokenUrl,
+        oauthConfig.tokenUrl,
         {
-          client_id: this.oauthConfig.clientId,
-          client_secret: this.oauthConfig.clientSecret,
+          client_id: oauthConfig.clientId,
+          client_secret: oauthConfig.clientSecret,
           code,
           grant_type: 'authorization_code',
-          redirect_uri: this.oauthConfig.redirectUri,
+          redirect_uri: oauthConfig.redirectUri,
         },
         {
           headers: {
@@ -104,12 +129,14 @@ export abstract class BaseProviderService {
    * Refresh access token using refresh token
    */
   async refreshAccessToken(refreshToken: string): Promise<OAuthTokenResponse> {
+    const oauthConfig = this.requireOAuthConfig();
+
     try {
       const { data } = await axios.post<OAuthTokenResponse>(
-        this.oauthConfig.tokenUrl,
+        oauthConfig.tokenUrl,
         {
-          client_id: this.oauthConfig.clientId,
-          client_secret: this.oauthConfig.clientSecret,
+          client_id: oauthConfig.clientId,
+          client_secret: oauthConfig.clientSecret,
           refresh_token: refreshToken,
           grant_type: 'refresh_token',
         },
