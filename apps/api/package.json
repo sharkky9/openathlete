@@ -17,7 +17,8 @@
     "tsc:check": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage"
+    "test:cov": "jest --coverage",
+    "test:timezones": "for tz in UTC America/Los_Angeles Europe/Paris Asia/Tokyo Pacific/Kiritimati; do echo \"--- TZ=$tz ---\"; TZ=$tz jest || exit 1; done"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.47",

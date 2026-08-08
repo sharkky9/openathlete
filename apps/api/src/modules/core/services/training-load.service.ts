@@ -121,18 +121,48 @@ export class TrainingLoadService {
     return a + (b - a) * t;
   }
 
+  /**
+   * A training day is a UTC calendar day.
+   *
+   * `TrainingLoadEntry.date` is a `@db.Date` column, which Prisma reads back as
+   * midnight UTC, and an entry's day is derived from the UTC calendar day of
+   * its activity's start instant (see `calculateAndSaveTrainingLoad`). Every
+   * day key and every day boundary below has to use that same definition.
+   *
+   * The helpers exist because the obvious spellings disagree: `setHours` and
+   * `getDate` work in the server's local time, while `toISOString` reports UTC.
+   * Mixing the two shifts the whole day grid off the stored data by a day
+   * wherever the server is not on UTC, which silently drops loads.
+   */
+  private toDayKey(date: Date) {
+    return date.toISOString().split('T')[0];
+  }
+
+  /** Midnight UTC of the calendar day containing `date`. */
+  private startOfUtcDay(date: Date) {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+    );
+  }
+
+  /** `date` shifted by whole UTC days, leaving the time of day untouched. */
+  private addUtcDays(date: Date, days: number) {
+    const shifted = new Date(date);
+    shifted.setUTCDate(shifted.getUTCDate() + days);
+    return shifted;
+  }
+
   private getWeekLoadSum(
     dailyLoadLookup: Map<string, number>,
     weekStart: Date,
     weekEnd: Date,
   ) {
-    const cursor = new Date(weekStart);
+    let cursor = this.startOfUtcDay(weekStart);
     let sum = 0;
 
     while (cursor <= weekEnd) {
-      const key = cursor.toISOString().split('T')[0];
-      sum += dailyLoadLookup.get(key) ?? 0;
-      cursor.setDate(cursor.getDate() + 1);
+      sum += dailyLoadLookup.get(this.toDayKey(cursor)) ?? 0;
+      cursor = this.addUtcDays(cursor, 1);
     }
 
     return sum;
@@ -146,10 +176,8 @@ export class TrainingLoadService {
     const loads: number[] = [];
 
     for (let weekOffset = 0; weekOffset < weeks; weekOffset++) {
-      const weekEnd = new Date(referenceDate);
-      weekEnd.setDate(weekEnd.getDate() - weekOffset * 7);
-      const weekStart = new Date(weekEnd);
-      weekStart.setDate(weekStart.getDate() - 6);
+      const weekEnd = this.addUtcDays(referenceDate, -weekOffset * 7);
+      const weekStart = this.addUtcDays(weekEnd, -6);
       loads.push(this.getWeekLoadSum(dailyLoadLookup, weekStart, weekEnd));
     }
 
@@ -787,7 +815,7 @@ export class TrainingLoadService {
     const dailyLoads = new Map<string, { load: number; count: number }>();
 
     for (const entry of entries) {
-      const dateKey = entry.date.toISOString().split('T')[0];
+      const dateKey = this.toDayKey(entry.date);
       const existing = dailyLoads.get(dateKey) || { load: 0, count: 0 };
       dailyLoads.set(dateKey, {
         load: existing.load + entry.value,
@@ -852,8 +880,7 @@ export class TrainingLoadService {
     }
 
     // Get last 42 days of data for CTL calculation
-    const startDate = new Date(targetDate);
-    startDate.setDate(startDate.getDate() - 42);
+    const startDate = this.addUtcDays(targetDate, -42);
 
     const dailyLoads = await this.getTrainingLoadByPeriod(
       user,
@@ -866,29 +893,28 @@ export class TrainingLoadService {
     // Create a map of dates with loads for quick lookup
     const loadMap = new Map<string, number>();
     dailyLoads.forEach((day) => {
-      const dateKey = day.date.toISOString().split('T')[0];
-      loadMap.set(dateKey, day.load);
+      loadMap.set(this.toDayKey(day.date), day.load);
     });
 
-    // Generate ALL days from startDate to targetDate (including days without activity)
+    // Generate ALL days from startDate to targetDate (including days without
+    // activity). The grid walks whole UTC days so its keys line up with the
+    // stored entry dates whatever timezone the server runs in.
     const allDays: Array<{ date: Date; load: number }> = [];
     const dailyLoadLookup = new Map<string, number>();
-    const currentDate = new Date(startDate);
-    currentDate.setHours(0, 0, 0, 0);
+    let currentDate = this.startOfUtcDay(startDate);
+    const lastDay = this.startOfUtcDay(targetDate);
 
-    while (currentDate <= targetDate) {
-      const dateKey = currentDate.toISOString().split('T')[0];
+    while (currentDate <= lastDay) {
+      const dateKey = this.toDayKey(currentDate);
       const load = loadMap.get(dateKey) || 0; // 0 load for rest days
 
-      const dayEntry = {
+      allDays.push({
         date: new Date(currentDate),
         load,
-      };
-
-      allDays.push(dayEntry);
+      });
       dailyLoadLookup.set(dateKey, load);
 
-      currentDate.setDate(currentDate.getDate() + 1);
+      currentDate = this.addUtcDays(currentDate, 1);
     }
 
     // Calculate exponentially weighted moving averages using ALL days (including rest days)
@@ -918,8 +944,7 @@ export class TrainingLoadService {
     }
 
     // Calculate recommended load range using ACWR-informed ramp logic
-    const normalizedTargetDate = new Date(targetDate);
-    normalizedTargetDate.setHours(0, 0, 0, 0);
+    const normalizedTargetDate = this.startOfUtcDay(targetDate);
 
     const weeklyLoads = this.getRecentWeeklyLoads(
       dailyLoadLookup,
@@ -1008,8 +1033,7 @@ export class TrainingLoadService {
     }
 
     // Get data starting 42 days before startDate for proper CTL calculation
-    const extendedStartDate = new Date(startDate);
-    extendedStartDate.setDate(extendedStartDate.getDate() - 42);
+    const extendedStartDate = this.addUtcDays(startDate, -42);
 
     const dailyLoads = await this.getTrainingLoadByPeriod(
       user,
@@ -1022,25 +1046,25 @@ export class TrainingLoadService {
     // Create a map of dates with loads for quick lookup
     const loadMap = new Map<string, number>();
     dailyLoads.forEach((day) => {
-      const dateKey = day.date.toISOString().split('T')[0];
-      loadMap.set(dateKey, day.load);
+      loadMap.set(this.toDayKey(day.date), day.load);
     });
 
-    // Generate ALL days from extendedStartDate to endDate (including days without activity)
+    // Generate ALL days from extendedStartDate to endDate (including days
+    // without activity), walking whole UTC days so the keys match the stored
+    // entry dates in any server timezone.
     const allDays: Array<{ date: Date; load: number }> = [];
-    const currentDate = new Date(extendedStartDate);
-    currentDate.setHours(0, 0, 0, 0);
+    let currentDate = this.startOfUtcDay(extendedStartDate);
+    const lastDay = this.startOfUtcDay(endDate);
 
-    while (currentDate <= endDate) {
-      const dateKey = currentDate.toISOString().split('T')[0];
-      const load = loadMap.get(dateKey) || 0; // 0 load for rest days
+    while (currentDate <= lastDay) {
+      const load = loadMap.get(this.toDayKey(currentDate)) || 0; // 0 for rest days
 
       allDays.push({
         date: new Date(currentDate),
         load,
       });
 
-      currentDate.setDate(currentDate.getDate() + 1);
+      currentDate = this.addUtcDays(currentDate, 1);
     }
 
     if (allDays.length === 0) {
@@ -1059,6 +1083,11 @@ export class TrainingLoadService {
     let atl = 0;
     let ctl = 0;
 
+    // Compared against whole UTC days so a caller passing a mid-day instant
+    // still gets the day it asked for, rather than losing the first row.
+    const firstRequestedDay = this.startOfUtcDay(startDate);
+    const lastRequestedDay = this.startOfUtcDay(endDate);
+
     for (const day of allDays) {
       // Update EWMA (even for days with 0 load - this causes fitness decay)
       atl = EWMA_ALPHA_ATL * day.load + (1 - EWMA_ALPHA_ATL) * atl;
@@ -1066,7 +1095,7 @@ export class TrainingLoadService {
       const tsb = ctl - atl;
 
       // Only include dates within the requested range
-      if (day.date >= startDate && day.date <= endDate) {
+      if (day.date >= firstRequestedDay && day.date <= lastRequestedDay) {
         history.push({
           date: day.date,
           load: day.load,
