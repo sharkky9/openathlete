@@ -11,8 +11,10 @@ import { PrismaService } from '../prisma/services/prisma.service';
 import { ProvidersSyncModule } from '../providers-sync/providers-sync.module';
 import { ActivityImportProcessor } from './processors/activity-import.processor';
 import { ActivityProcessingProcessor } from './processors/activity-processing.processor';
+import { FullImportCompletionProcessor } from './processors/full-import-completion.processor';
 import { TrainingLoadEstimationProcessor } from './processors/training-load-estimation.processor';
 import { QueueService } from './queue.service';
+import { FullImportCompletionService } from './services/full-import-completion.service';
 import { TrainingLoadEstimationService } from './services/training-load-estimation.service';
 
 function parseRedisUrl(redisUrl: string): {
@@ -254,6 +256,20 @@ function parseRedisUrl(redisUrl: string): {
       },
     }),
     BullModule.registerQueue({
+      name: 'full-import-completion',
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: true,
+        removeOnFail: {
+          age: 7 * 24 * 3600,
+        },
+      },
+    }),
+    BullModule.registerQueue({
       name: 'training-load-estimation',
       defaultJobOptions: {
         attempts: 3,
@@ -274,6 +290,7 @@ function parseRedisUrl(redisUrl: string): {
   providers: [
     PrismaService,
     QueueService,
+    FullImportCompletionService,
     TrainingLoadEstimationService,
     // Note: We use process.env here because ConfigService is not available
     // at module definition time. The value is validated by envValidationSchema.
@@ -283,10 +300,18 @@ function parseRedisUrl(redisUrl: string): {
     ...(process.env.ENABLE_ACTIVITY_PROCESSING === 'true'
       ? [ActivityProcessingProcessor]
       : []),
+    ...(process.env.ENABLE_ACTIVITY_IMPORT === 'true' &&
+    process.env.ENABLE_ACTIVITY_PROCESSING === 'true'
+      ? [FullImportCompletionProcessor]
+      : []),
     ...(process.env.ENABLE_TRAINING_LOAD_ESTIMATION === 'true'
       ? [TrainingLoadEstimationProcessor]
       : []),
   ],
-  exports: [QueueService, TrainingLoadEstimationService],
+  exports: [
+    QueueService,
+    FullImportCompletionService,
+    TrainingLoadEstimationService,
+  ],
 })
 export class QueueModule {}

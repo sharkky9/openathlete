@@ -19,10 +19,12 @@ export interface GetOAuthUriResponse {
 }
 
 export interface ImportAllActivitiesResponse {
-  success: boolean;
+  status: 'accepted' | 'completed';
+  completed: boolean;
   message?: string;
   queuedActivities?: number;
   backfillRequested?: boolean;
+  recoveredProcessingJobs?: number;
 }
 
 export class ProviderAPI {

@@ -65,10 +65,14 @@ const DEFAULT_IMPORT_LOOKBACK_DAYS = 30;
 const FULL_IMPORT_FLOOR = new Date('2000-01-01T00:00:00.000Z');
 
 /**
- * Activity listing has no pagination — only a date range and a `limit` that
- * truncates the *oldest* end. So history is walked in fixed date windows.
+ * Activity listing has no cursor pagination — only a date range and a `limit`
+ * that truncates the oldest end. Large windows are bisected whenever a
+ * response approaches that limit, so a truncated response can never masquerade
+ * as the whole range.
  */
 const IMPORT_WINDOW_DAYS = 365;
+const IMPORT_RESPONSE_LIMIT = 100;
+const IMPORT_SPLIT_THRESHOLD = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -445,12 +449,11 @@ export class IntervalsIcuProviderService
         ),
       );
 
-      const activities = await client.get<IntervalsIcuActivity[]>(
-        `/athlete/${encodeURIComponent(athleteId)}/activities`,
-        {
-          oldest: toIntervalsIcuDate(windowStart),
-          newest: toIntervalsIcuDate(windowEnd),
-        },
+      const activities = await this.fetchCompleteActivityWindow(
+        client,
+        athleteId,
+        windowStart,
+        windowEnd,
       );
 
       for (const activity of activities ?? []) {
@@ -474,6 +477,56 @@ export class IntervalsIcuProviderService
     }
 
     return imported;
+  }
+
+  private async fetchCompleteActivityWindow(
+    client: IntervalsIcuApiClient,
+    athleteId: string,
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<IntervalsIcuActivity[]> {
+    const oldest = toIntervalsIcuDate(windowStart);
+    const newest = toIntervalsIcuDate(windowEnd);
+    const activities =
+      (await client.get<IntervalsIcuActivity[]>(
+        `/athlete/${encodeURIComponent(athleteId)}/activities`,
+        {
+          oldest,
+          newest,
+          limit: IMPORT_RESPONSE_LIMIT,
+        },
+      )) ?? [];
+
+    if (activities.length < IMPORT_SPLIT_THRESHOLD) {
+      return activities;
+    }
+
+    const startDay = Date.parse(`${oldest}T00:00:00.000Z`);
+    const endDay = Date.parse(`${newest}T00:00:00.000Z`);
+    if (startDay >= endDay) {
+      throw new Error(
+        `Intervals.icu returned ${activities.length} activities for ${oldest}; the response may be truncated and cannot be paginated safely`,
+      );
+    }
+
+    const daySpan = Math.floor((endDay - startDay) / DAY_MS);
+    const midpoint = new Date(startDay + Math.floor(daySpan / 2) * DAY_MS);
+    const newerStart = new Date(midpoint.getTime() + DAY_MS);
+
+    const olderActivities = await this.fetchCompleteActivityWindow(
+      client,
+      athleteId,
+      new Date(startDay),
+      midpoint,
+    );
+    const newerActivities = await this.fetchCompleteActivityWindow(
+      client,
+      athleteId,
+      newerStart,
+      new Date(endDay),
+    );
+
+    return [...newerActivities, ...olderActivities];
   }
 
   private toImportedActivity(
@@ -798,7 +851,10 @@ export class IntervalsIcuProviderService
       return 0;
     }
 
-    await this.queueService.addActivityImportJobs(account, newActivities, true);
-    return newActivities.length;
+    return this.queueService.addActivityImportJobs(
+      account,
+      newActivities,
+      true,
+    );
   }
 }

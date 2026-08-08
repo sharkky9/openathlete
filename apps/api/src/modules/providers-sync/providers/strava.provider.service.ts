@@ -530,8 +530,11 @@ export class StravaProviderService
       return 0;
     }
 
-    await this.queueService.addActivityImportJobs(account, newActivities, true);
-    return newActivities.length;
+    return this.queueService.addActivityImportJobs(
+      account,
+      newActivities,
+      true,
+    );
   }
 
   /**

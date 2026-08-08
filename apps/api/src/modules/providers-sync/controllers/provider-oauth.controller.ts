@@ -41,6 +41,7 @@ import {
 import { JwtUser, UserTypeGuard } from 'src/modules/auth';
 import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
+import { FullImportCompletionService } from 'src/modules/queue/services/full-import-completion.service';
 
 import {
   GarminHealthPingPayload,
@@ -73,6 +74,7 @@ export class ProviderOAuthController {
     private readonly polarProviderService: PolarProviderService,
     private readonly intervalsIcuProviderService: IntervalsIcuProviderService,
     private readonly prisma: PrismaService,
+    private readonly fullImportCompletionService: FullImportCompletionService,
   ) {}
 
   private async getAthleteForUser(user: AuthUser) {
@@ -485,6 +487,8 @@ export class ProviderOAuthController {
       },
       data: {
         status: 'revoked',
+        fullImportRequestedAt: null,
+        fullImportCompletedAt: null,
       },
     });
 
@@ -720,7 +724,7 @@ export class ProviderOAuthController {
   @ApiOperation({
     summary: 'Trigger full historical activity import',
     description:
-      'Initiates a full historical import of all activities from a connected provider. The import is queued and processed asynchronously. Only providers that support full import (Strava, Garmin, Polar, Suunto) can use this endpoint. Activity import must be enabled for the provider. If a full import is already in progress, the request will be rejected. If a full import was already completed, returns success without re-importing. Some providers may request a backfill, in which case the import completion date is set to null until backfill completes.',
+      'Initiates a full historical import of all activities from a connected provider. Accepted work is processed asynchronously and is not reported as completed until every import and activity-processing job settles successfully. If a full import is already in progress, the request is rejected unless its recovery timeout has elapsed.',
   })
   @ApiParam({
     name: 'provider',
@@ -735,7 +739,16 @@ export class ProviderOAuthController {
     schema: {
       type: 'object',
       properties: {
-        success: { type: 'boolean', example: true },
+        status: {
+          type: 'string',
+          enum: ['accepted', 'completed'],
+          example: 'accepted',
+        },
+        completed: {
+          type: 'boolean',
+          description: 'Whether all activity processing has completed',
+          example: false,
+        },
         queuedActivities: {
           type: 'number',
           description: 'Number of activities queued for import',
@@ -747,6 +760,12 @@ export class ProviderOAuthController {
             'Whether a backfill was requested (import will complete later)',
           example: false,
         },
+        recoveredProcessingJobs: {
+          type: 'number',
+          description:
+            'Unfinished activity-processing jobs recovered from an earlier run',
+          example: 0,
+        },
         message: {
           type: 'string',
           nullable: true,
@@ -754,7 +773,7 @@ export class ProviderOAuthController {
           example: 'Full import already completed',
         },
       },
-      required: ['success'],
+      required: ['status', 'completed'],
     },
   })
   @ApiResponse({
@@ -775,10 +794,11 @@ export class ProviderOAuthController {
     @Param('provider') provider: string,
   ) {
     const providerEnum = provider.toUpperCase() as ConnectorProvider;
-    const { account } = await this.getProviderAccountForUser(
+    const { account: fetchedAccount } = await this.getProviderAccountForUser(
       user,
       providerEnum,
     );
+    let account = fetchedAccount;
 
     if (!account.importActivitiesEnabled) {
       throw new BadRequestException(
@@ -796,14 +816,31 @@ export class ProviderOAuthController {
     }
 
     if (account.fullImportCompletedAt) {
-      return { success: true, message: 'Full import already completed' };
+      return {
+        status: 'completed',
+        completed: true,
+        message: 'Full import already completed',
+      };
     }
 
     if (account.fullImportRequestedAt && !account.fullImportCompletedAt) {
-      throw new BadRequestException(
-        'A historical import is already in progress',
+      const released = await this.fullImportCompletionService.releaseIfStale(
+        account.providerAccountId,
+        account.fullImportRequestedAt,
       );
+      if (!released) {
+        throw new BadRequestException(
+          'A historical import is already in progress',
+        );
+      }
+      account = {
+        ...account,
+        fullImportRequestedAt: null,
+        fullImportCompletedAt: null,
+      };
     }
+
+    this.fullImportCompletionService.assertPipelineAvailable();
 
     const now = new Date();
 
@@ -817,28 +854,35 @@ export class ProviderOAuthController {
       },
     });
 
+    const runAccount = {
+      ...account,
+      fullImportRequestedAt: now,
+      fullImportCompletedAt: null,
+    };
+    const runId = this.fullImportCompletionService.runId(now);
+
     try {
       let importResult: FullImportResult | null = null;
       switch (providerEnum) {
         case ConnectorProvider.STRAVA:
           importResult =
-            await this.stravaProviderService.queueFullImport(account);
+            await this.stravaProviderService.queueFullImport(runAccount);
           break;
         case ConnectorProvider.GARMIN:
           importResult =
-            await this.garminProviderService.queueFullImport(account);
+            await this.garminProviderService.queueFullImport(runAccount);
           break;
         case ConnectorProvider.POLAR:
           importResult =
-            await this.polarProviderService.queueFullImport(account);
+            await this.polarProviderService.queueFullImport(runAccount);
           break;
         case ConnectorProvider.SUUNTO:
           importResult =
-            await this.suuntoProviderService.queueFullImport(account);
+            await this.suuntoProviderService.queueFullImport(runAccount);
           break;
         case ConnectorProvider.INTERVALS_ICU:
           importResult =
-            await this.intervalsIcuProviderService.queueFullImport(account);
+            await this.intervalsIcuProviderService.queueFullImport(runAccount);
           break;
         default:
           throw new BadRequestException(
@@ -846,30 +890,43 @@ export class ProviderOAuthController {
           );
       }
 
-      await this.prisma.providerAccount.update({
-        where: {
-          providerAccountId: account.providerAccountId,
-        },
-        data: {
-          fullImportCompletedAt:
-            importResult?.backfillRequested === true ? null : new Date(),
-        },
-      });
-
       const queuedCount = importResult?.queuedActivities ?? 0;
+      const recoveredProcessingJobs =
+        await this.fullImportCompletionService.recoverProcessingJobs(
+          account.providerAccountId,
+          runId,
+        );
+      const completionStatus =
+        importResult?.backfillRequested === true
+          ? 'pending'
+          : await this.fullImportCompletionService.reconcile(
+              account.providerAccountId,
+              runId,
+            );
+
+      if (completionStatus === 'failed') {
+        throw new BadRequestException(
+          'Historical import failed before activity processing completed',
+        );
+      }
+      const completed = completionStatus === 'completed';
 
       return {
-        success: true,
+        status: completed ? 'completed' : 'accepted',
+        completed,
         queuedActivities: queuedCount,
+        recoveredProcessingJobs,
         backfillRequested: importResult?.backfillRequested ?? false,
       };
     } catch (error) {
-      await this.prisma.providerAccount.update({
+      await this.prisma.providerAccount.updateMany({
         where: {
           providerAccountId: account.providerAccountId,
+          fullImportRequestedAt: now,
         },
         data: {
           fullImportRequestedAt: null,
+          fullImportCompletedAt: null,
         },
       });
       throw error;

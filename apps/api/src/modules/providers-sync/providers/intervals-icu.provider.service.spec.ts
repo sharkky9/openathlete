@@ -21,7 +21,12 @@ import { IntervalsIcuProviderService } from './intervals-icu.provider.service';
  * from.
  */
 interface ServiceInternals {
-  createClient: (apiKey: string) => { get: (path: string) => Promise<unknown> };
+  createClient: (apiKey: string) => {
+    get: (
+      path: string,
+      params?: Record<string, string | number | undefined>,
+    ) => Promise<unknown>;
+  };
 }
 
 const ATHLETE_ID = 42;
@@ -530,6 +535,95 @@ function importSetup(options: {
 
   return { service, prisma, events, activities, clientsBuilt };
 }
+
+function listedActivity(id: string, date: string) {
+  return {
+    id,
+    name: `Activity ${id}`,
+    type: 'Ride',
+    start_date: `${date}T08:00:00.000Z`,
+    elapsed_time: 3600,
+  };
+}
+
+describe('IntervalsIcuProviderService.importActivities', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('bisects a response near the API cap instead of accepting truncated history', async () => {
+    const service = new IntervalsIcuProviderService(
+      {} as PrismaService,
+      {} as ConfigService<ApiEnvSchemaType, true>,
+      {} as QueueService,
+    );
+    const requests: Record<string, string | number | undefined>[] = [];
+    jest
+      .spyOn(service as unknown as ServiceInternals, 'createClient')
+      .mockReturnValue({
+        get: async (_path, params = {}) => {
+          requests.push(params);
+          if (requests.length === 1) {
+            return Array.from({ length: 99 }, (_, index) =>
+              listedActivity(`truncated-${index}`, '2026-08-01'),
+            );
+          }
+
+          const isOlderHalf = String(params.oldest) < '2026-07-01';
+          return Array.from({ length: 60 }, (_, index) =>
+            listedActivity(
+              `${isOlderHalf ? 'older' : 'newer'}-${index}`,
+              isOlderHalf ? '2026-03-01' : '2026-09-01',
+            ),
+          );
+        },
+      });
+
+    const activities = await service.importActivities(ACCOUNT, {
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+    });
+
+    expect(activities).toHaveLength(120);
+    expect(requests).toHaveLength(3);
+    expect(requests[0]).toMatchObject({
+      oldest: '2026-01-01',
+      newest: '2026-12-31',
+      limit: 100,
+    });
+    const splitRequests = requests
+      .slice(1)
+      .sort((a, b) => String(a.oldest).localeCompare(String(b.oldest)));
+    const olderEnd = Date.parse(`${String(splitRequests[0].newest)}T00:00:00Z`);
+    const newerStart = Date.parse(
+      `${String(splitRequests[1].oldest)}T00:00:00Z`,
+    );
+    expect(newerStart - olderEnd).toBe(DAY_MS);
+  });
+
+  it('fails closed when even a single-day response may be truncated', async () => {
+    const service = new IntervalsIcuProviderService(
+      {} as PrismaService,
+      {} as ConfigService<ApiEnvSchemaType, true>,
+      {} as QueueService,
+    );
+    jest
+      .spyOn(service as unknown as ServiceInternals, 'createClient')
+      .mockReturnValue({
+        get: async () =>
+          Array.from({ length: 99 }, (_, index) =>
+            listedActivity(`dense-${index}`, '2026-08-01'),
+          ),
+      });
+
+    await expect(
+      service.importActivities(ACCOUNT, {
+        startDate: new Date('2026-08-01T00:00:00.000Z'),
+        endDate: new Date('2026-08-01T23:59:59.000Z'),
+      }),
+    ).rejects.toThrow('response may be truncated');
+  });
+});
 
 const WATTS_STREAM = [
   { type: 'time', data: [0, 1, 2, 3] },
