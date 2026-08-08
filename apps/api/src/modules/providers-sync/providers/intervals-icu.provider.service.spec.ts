@@ -30,12 +30,38 @@ const USER: AuthUser = { userId: 7 } as AuthUser;
 function setup(
   env: Partial<Record<keyof ApiEnvSchemaType, string>> = {},
   athleteProfile: unknown = { id: 'i123456', name: 'Test Athlete' },
+  seedEntries: Array<{
+    trainingLoadEntryId: number;
+    date: Date;
+    activity: { event: { startDate: Date } };
+  }> = [],
 ) {
   const created: { accessToken: string; externalUserId?: string }[] = [];
+  const entries = seedEntries.map((entry) => ({ ...entry }));
 
   const prisma = {
     athlete: {
       findUnique: jest.fn().mockResolvedValue({ athleteId: ATHLETE_ID }),
+      update: jest.fn().mockResolvedValue({ athleteId: ATHLETE_ID }),
+    },
+    trainingLoadEntry: {
+      findMany: jest.fn().mockImplementation(async () => entries),
+      update: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { trainingLoadEntryId: number };
+          data: { date: Date };
+        }) => {
+          const entry = entries.find(
+            (candidate) =>
+              candidate.trainingLoadEntryId === where.trainingLoadEntryId,
+          );
+          if (entry) entry.date = data.date;
+          return entry;
+        },
+      ),
     },
     providerAccount: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -80,6 +106,7 @@ function setup(
           if (athleteProfile instanceof Error) {
             throw athleteProfile;
           }
+          if (path.includes('/activities')) return [];
           return athleteProfile;
         },
       };
@@ -220,6 +247,70 @@ describe('IntervalsIcuProviderService.connect', () => {
     const output = logged.join('\n');
     expect(output).not.toContain('another-secret-key');
     expect(output).toContain('request');
+  });
+
+  it('stores the profile timezone and idempotently re-anchors existing loads', async () => {
+    const { service, prisma } = setup(
+      {},
+      {
+        id: 'i123456',
+        name: 'Test Athlete',
+        timezone: 'America/Los_Angeles',
+      },
+      [
+        {
+          trainingLoadEntryId: 9,
+          date: new Date('2026-06-29T00:00:00Z'),
+          activity: {
+            event: { startDate: new Date('2026-06-29T02:00:00Z') },
+          },
+        },
+      ],
+    );
+
+    await service.connect(USER, 'request-key');
+    await service.connect(USER, 'request-key');
+
+    expect(prisma.athlete.update).toHaveBeenCalledWith({
+      where: { athleteId: ATHLETE_ID },
+      data: { timezone: 'America/Los_Angeles' },
+    });
+    expect(prisma.trainingLoadEntry.update).toHaveBeenCalledTimes(1);
+    expect(prisma.trainingLoadEntry.update).toHaveBeenCalledWith({
+      where: { trainingLoadEntryId: 9 },
+      data: { date: new Date('2026-06-28T00:00:00Z') },
+    });
+  });
+
+  it('refreshes the profile timezone whenever activities are imported', async () => {
+    const { service, prisma, pathsRequested } = setup(
+      {},
+      {
+        id: 'i123456',
+        timezone: 'America/Los_Angeles',
+      },
+    );
+
+    await service.importActivities(
+      {
+        providerAccountId: 1,
+        athleteId: ATHLETE_ID,
+        externalUserId: 'i123456',
+        accessToken: 'request-key',
+        status: 'active',
+      } as ProviderAccount,
+      {
+        startDate: new Date('2026-06-01T00:00:00Z'),
+        endDate: new Date('2026-06-02T00:00:00Z'),
+      },
+    );
+
+    expect(pathsRequested[0]).toBe('/athlete/i123456');
+    expect(pathsRequested).toContain('/athlete/i123456/activities');
+    expect(prisma.athlete.update).toHaveBeenCalledWith({
+      where: { athleteId: ATHLETE_ID },
+      data: { timezone: 'America/Los_Angeles' },
+    });
   });
 });
 

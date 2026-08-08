@@ -29,11 +29,9 @@ import { TrainingLoadService } from './training-load.service';
  * TSB is CTL - ATL: fatigue falls away quickly, fitness slowly, so rest pushes
  * TSB positive and a hard block pushes it negative.
  *
- * A training day is a UTC calendar day throughout: `TrainingLoadEntry.date` is a
- * `@db.Date` column, which Prisma hands back as UTC midnight, and the write path
- * derives an entry's day from the UTC calendar day of the activity's start
- * instant. The read paths must use the same definition or loads land in the
- * wrong bucket — see the timezone-independence block at the bottom of this file.
+ * `TrainingLoadEntry.date` is a UTC-midnight encoding of the athlete's local
+ * calendar date. Read paths operate on those day anchors and must never let the
+ * API server's process timezone move them.
  */
 
 const ATHLETE_ID = 42;
@@ -66,7 +64,7 @@ type Entry = { date: string; value: number };
  * `gte`/`lte` filter for real so that the 42-day warm-up window the service
  * asks for is exercised rather than assumed.
  */
-function buildService(entries: Entry[]) {
+function buildService(entries: Entry[], timezone = 'UTC') {
   const rows = entries.map((entry) => ({
     date: day(entry.date),
     value: entry.value,
@@ -87,8 +85,8 @@ function buildService(entries: Entry[]) {
 
   const prisma = {
     athlete: {
-      findFirst: jest.fn(async () => ({ athleteId: ATHLETE_ID })),
-      findUnique: jest.fn(async () => ({ athleteId: ATHLETE_ID })),
+      findFirst: jest.fn(async () => ({ athleteId: ATHLETE_ID, timezone })),
+      findUnique: jest.fn(async () => ({ athleteId: ATHLETE_ID, timezone })),
     },
     trainingLoadCalculation: {
       findUnique: jest.fn(async () => ({
@@ -118,8 +116,8 @@ const metricsOn = (entries: Entry[], targetDate: string) =>
   );
 
 /** As `metricsOn`, but for an arbitrary instant rather than a UTC midnight. */
-const metricsAt = (entries: Entry[], targetDate: Date) =>
-  buildService(entries).service.getTrainingLoadMetrics(
+const metricsAt = (entries: Entry[], targetDate: Date, timezone = 'UTC') =>
+  buildService(entries, timezone).service.getTrainingLoadMetrics(
     USER,
     CALCULATION_TYPE,
     targetDate,
@@ -439,9 +437,58 @@ describe('TrainingLoadService — history', () => {
   });
 });
 
+describe('TrainingLoadService — athlete-local writes', () => {
+  it('stores an evening Pacific activity under the athlete local date', async () => {
+    const create = jest.fn(
+      async ({ data }: { data: Record<string, unknown> }) => data,
+    );
+    const prisma = {
+      athlete: {
+        findFirst: jest.fn(async () => ({
+          athleteId: ATHLETE_ID,
+          timezone: 'America/Los_Angeles',
+          user: { gender: 'MALE' },
+        })),
+      },
+      event: {
+        findFirst: jest.fn(async () => ({
+          eventId: 100,
+          startDate: new Date('2026-08-08T02:00:00Z'), // Friday 19:00 PDT
+          activity: {
+            eventActivityId: 200,
+            rpe: 0.5,
+            movingTime: 3600,
+          },
+        })),
+      },
+      trainingLoadCalculation: {
+        findUnique: jest.fn(async () => ({
+          trainingLoadCalculationId: CALCULATION_ID,
+        })),
+      },
+      trainingLoadEntry: {
+        findUnique: jest.fn(async () => null),
+        create,
+      },
+    };
+    const service = new TrainingLoadService(
+      prisma as unknown as PrismaService,
+      {} as CaslAbilityFactory,
+    );
+
+    await service.calculateActivityLoad(USER, 100, 'FOSTER_RPE');
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        date: new Date('2026-08-07T00:00:00Z'),
+      }),
+    });
+  });
+});
+
 /**
- * A training day is a UTC calendar day, so none of these numbers may depend on
- * the timezone the server happens to run in.
+ * Day anchors are timezone-free after the athlete-local conversion, so none of
+ * these numbers may depend on the timezone the server happens to run in.
  *
  * The service used to bucket its day grid with local-time `setHours(0, 0, 0, 0)`
  * while keying it with UTC `toISOString().split('T')[0]`. Those agree only at
@@ -485,25 +532,16 @@ describe(`TrainingLoadService — timezone independence (TZ=${PROCESS_TIMEZONE})
    * The case that motivated all of this.
    *
    * The owner is in America/Los_Angeles. He rides at 19:00 on Friday 7 August;
-   * that instant is 2026-08-08T02:00Z, so the write path — which files an entry
-   * under the UTC calendar day of the activity's start — stores it as
-   * 2026-08-08.
-   *
-   * The dashboard then asks for metrics "now", i.e. at that same 02:00Z
-   * instant. The old grid stopped at *local* midnight, which in PDT is
-   * 2026-08-07, so it never generated a 2026-08-08 bucket and the ride he had
-   * just finished counted for nothing until the next day. Because ATL and CTL
-   * are cumulative, that understatement then propagated forward.
-   *
-   * Fails under `TZ=America/Los_Angeles` against the old local/UTC mix; passes
-   * in every zone once the grid is built in UTC.
+   * that instant is 2026-08-08T02:00Z. Both the entry write and the metrics
+   * request must resolve it to the athlete's Friday anchor, 2026-08-07.
    */
   it('counts an evening activity logged late in the UTC day', async () => {
     const rideInstant = new Date('2026-08-08T02:00:00.000Z'); // 19:00 PDT, 7 Aug
 
     const metrics = await metricsAt(
-      [{ date: '2026-08-08', value: 100 }],
+      [{ date: '2026-08-07', value: 100 }],
       rideInstant,
+      'America/Los_Angeles',
     );
 
     expect(metrics.atl).toBeCloseTo(ALPHA_ATL * 100, 10);

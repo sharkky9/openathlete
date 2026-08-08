@@ -10,6 +10,7 @@ import {
 } from '@openathlete/database';
 import { ActivityStream, ApiEnvSchemaType } from '@openathlete/shared';
 
+import { isValidTimeZone, toDayAnchor } from 'src/common/utils/day-anchor';
 import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
 
 import { compressActivityStream } from '../../core/helpers/activity-stream';
@@ -235,6 +236,78 @@ export class IntervalsIcuProviderService
   }
 
   /**
+   * Persist the provider's current IANA zone and repair every stored day label.
+   *
+   * CTL and ATL are derived on reads; neither value is persisted or memoized.
+   * The only historical state that needs repair is therefore each entry's
+   * `date`, re-derived independently from its activity event's immutable start
+   * instant. Updating only changed rows makes this safe to rerun after an
+   * interrupted import and whenever Intervals.icu reports a changed home zone.
+   */
+  private async synchronizeAthleteTimezone(
+    athleteId: number,
+    candidateTimeZone?: string | null,
+  ): Promise<void> {
+    const timeZone = candidateTimeZone?.trim();
+    if (!timeZone) return;
+
+    if (!isValidTimeZone(timeZone)) {
+      this.logger.warn(
+        `Ignoring invalid Intervals.icu timezone "${timeZone}" for athlete ${athleteId}`,
+      );
+      return;
+    }
+
+    await this.prisma.athlete.update({
+      where: { athleteId },
+      data: { timezone: timeZone },
+    });
+
+    const entries = await this.prisma.trainingLoadEntry.findMany({
+      where: {
+        calculation: { athleteId },
+      },
+      select: {
+        trainingLoadEntryId: true,
+        date: true,
+        activity: {
+          select: {
+            event: { select: { startDate: true } },
+          },
+        },
+      },
+    });
+
+    let updated = 0;
+    for (const entry of entries) {
+      const date = toDayAnchor(entry.activity.event.startDate, timeZone);
+      if (date.getTime() === entry.date.getTime()) continue;
+
+      await this.prisma.trainingLoadEntry.update({
+        where: { trainingLoadEntryId: entry.trainingLoadEntryId },
+        data: { date },
+      });
+      updated++;
+    }
+
+    if (updated > 0) {
+      this.logger.log(
+        `Re-anchored ${updated} training-load entries to ${timeZone} for athlete ${athleteId}`,
+      );
+    }
+  }
+
+  private async refreshAthleteTimezone(
+    account: ProviderAccount,
+    client: IntervalsIcuApiClient,
+  ): Promise<void> {
+    const profile = await client.get<IntervalsIcuAthlete>(
+      `/athlete/${encodeURIComponent(this.athleteIdFor(account))}`,
+    );
+    await this.synchronizeAthleteTimezone(account.athleteId, profile.timezone);
+  }
+
+  /**
    * Resolve the credential to connect with.
    *
    * A key supplied in the request always wins. Only when none is supplied do we
@@ -319,6 +392,8 @@ export class IntervalsIcuProviderService
         ? profile.id
         : requestedAthleteId;
 
+    await this.synchronizeAthleteTimezone(athlete.athleteId, profile.timezone);
+
     // The key itself is never logged — only where it came from.
     this.logger.log(
       `Connected Intervals.icu athlete ${externalUserId} for OpenAthlete athlete ${athlete.athleteId} (API key from ${credentials.usedEnvFallback ? 'INTERVALS_ICU_API_KEY' : 'request'})`,
@@ -346,6 +421,10 @@ export class IntervalsIcuProviderService
   ): Promise<ImportedActivity[]> {
     const client = await this.clientForAccount(account);
     const athleteId = this.athleteIdFor(account);
+
+    // Imports are explicit rather than scheduled, so this is the refresh point
+    // for a changed Intervals.icu profile timezone.
+    await this.refreshAthleteTimezone(account, client);
 
     const endDate = options?.endDate ?? new Date();
     const startDate =

@@ -7,6 +7,12 @@ import {
   coachDashboardResponseSchema,
 } from '@openathlete/shared';
 
+import {
+  addDaysAnchor,
+  dayRangeInstants,
+  normalizeTimeZone,
+  toDayAnchor,
+} from 'src/common/utils/day-anchor';
 import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 
@@ -14,33 +20,32 @@ import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 export class CoachService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private defaultPeriod(): { start: Date; end: Date } {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - 28); // last 4 weeks
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+  private defaultPeriod(timeZone: string): { start: Date; end: Date } {
+    const today = toDayAnchor(new Date(), timeZone);
+    const start = dayRangeInstants(addDaysAnchor(today, -28), timeZone).start;
+    const endExclusive = dayRangeInstants(today, timeZone).endExclusive;
+    return { start, end: new Date(endExclusive.getTime() - 1) };
   }
 
   async getCoachDashboard(
     user: AuthUser,
     period?: { start?: Date; end?: Date },
   ): Promise<CoachDashboardResponseDto> {
-    // Resolve period
-    const { start, end } = (() => {
-      if (period?.start && period?.end)
-        return { start: period.start, end: period.end };
-      return this.defaultPeriod();
-    })();
-
-    // Get coached athletes for this user
+    // Get coached athletes first: their timezone defines calendar-day defaults.
+    // This deployment has one athlete; UTC remains the safe empty-list fallback.
     const coachedAthletes = await this.prisma.athlete.findMany({
       where: { coachAthletes: { some: { userId: user.userId } } },
       include: {
         user: { select: { firstName: true, lastName: true, email: true } },
       },
     });
+
+    const timeZone = normalizeTimeZone(coachedAthletes[0]?.timezone);
+    const { start, end } = (() => {
+      if (period?.start && period?.end)
+        return { start: period.start, end: period.end };
+      return this.defaultPeriod(timeZone);
+    })();
 
     const athleteIds = coachedAthletes.map((a) => a.athleteId);
     if (athleteIds.length === 0) {

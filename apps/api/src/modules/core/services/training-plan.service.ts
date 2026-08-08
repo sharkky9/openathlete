@@ -9,6 +9,15 @@ import {
   mapWorkoutDtoToPrisma,
 } from '@openathlete/shared';
 
+import {
+  addDaysAnchor,
+  dayRangeInstants,
+  localDateTimeToInstant,
+  normalizeTimeZone,
+  startOfDayInstant,
+  toDayAnchor,
+} from 'src/common/utils/day-anchor';
+
 import { AuthUser } from '../../auth/decorators/user.decorator';
 import { PrismaService } from '../../prisma/services/prisma.service';
 
@@ -27,6 +36,15 @@ export class TrainingPlanService {
       throw new Error('Athlete ID is required');
     }
 
+    const athlete = await this.prisma.athlete.findUnique({
+      where: { athleteId },
+      select: { timezone: true },
+    });
+    if (!athlete) {
+      throw new Error('Athlete not found');
+    }
+    const timeZone = normalizeTimeZone(athlete.timezone);
+
     // Convert startDate to Date if it's a string (from JSON)
     const startDateObj =
       startDate instanceof Date ? startDate : new Date(startDate);
@@ -36,9 +54,14 @@ export class TrainingPlanService {
       throw new Error('Invalid start date provided');
     }
 
+    const startAnchor = toDayAnchor(startDateObj, timeZone);
+    const planStart = startOfDayInstant(startAnchor, timeZone);
+
     // Calculate end date based on plan duration (in weeks)
-    const endDate = new Date(startDateObj);
-    endDate.setDate(endDate.getDate() + planData.plan.duration * 7);
+    const endDate = startOfDayInstant(
+      addDaysAnchor(startAnchor, planData.plan.duration * 7),
+      timeZone,
+    );
 
     // Create TrainingPlan
     const trainingPlan = await this.prisma.trainingPlan.create({
@@ -47,29 +70,27 @@ export class TrainingPlanService {
         name: planData.plan.name,
         description: planData.plan.description,
         goal: planData.plan.goal,
-        startDate: startDateObj,
+        startDate: planStart,
         endDate,
         status: PlanStatus.DRAFT,
       },
     });
 
     // Calculate dates for each week
-    let currentWeekStart = new Date(startDateObj);
     const weekDates: Array<{ start: Date; end: Date }> = [];
 
     for (let i = 0; i < planData.plan.duration; i++) {
-      const weekEnd = new Date(currentWeekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
+      const weekStartAnchor = addDaysAnchor(startAnchor, i * 7);
+      const weekEndAnchor = addDaysAnchor(weekStartAnchor, 6);
+      const weekEndExclusive = dayRangeInstants(
+        weekEndAnchor,
+        timeZone,
+      ).endExclusive;
 
       weekDates.push({
-        start: new Date(currentWeekStart),
-        end: weekEnd,
+        start: startOfDayInstant(weekStartAnchor, timeZone),
+        end: new Date(weekEndExclusive.getTime() - 1),
       });
-
-      currentWeekStart = new Date(weekEnd);
-      currentWeekStart.setDate(currentWeekStart.getDate() + 1);
-      currentWeekStart.setHours(0, 0, 0, 0);
     }
 
     // Create cycles and weeks
@@ -121,11 +142,13 @@ export class TrainingPlanService {
 
         // Create Events for each session
         for (const session of weekData.sessions) {
-          // Calculate session date based on dayOfWeek
-          const sessionDate = new Date(weekDatesData.start);
-          const dayOffset = session.dayOfWeek - sessionDate.getDay();
-          sessionDate.setDate(sessionDate.getDate() + dayOffset);
-          sessionDate.setHours(9, 0, 0, 0); // Default to 9 AM
+          const weekStartAnchor = addDaysAnchor(startAnchor, weekIndex * 7);
+          const dayOffset =
+            (session.dayOfWeek - weekStartAnchor.getUTCDay() + 7) % 7;
+          const sessionAnchor = addDaysAnchor(weekStartAnchor, dayOffset);
+          const sessionDate = localDateTimeToInstant(sessionAnchor, timeZone, {
+            hour: 9,
+          });
 
           // Calculate end date (default to 1 hour duration if not specified)
           const sessionEndDate = new Date(sessionDate);
@@ -134,7 +157,7 @@ export class TrainingPlanService {
               sessionDate.getTime() + session.goalDuration * 1000,
             );
           } else {
-            sessionEndDate.setHours(sessionDate.getHours() + 1);
+            sessionEndDate.setTime(sessionDate.getTime() + 60 * 60 * 1000);
           }
 
           // Create event directly with Prisma to link it to training week

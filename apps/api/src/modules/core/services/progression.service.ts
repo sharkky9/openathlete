@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import {
   Athlete,
@@ -10,8 +14,15 @@ import {
 } from '@openathlete/database';
 import { GetProgressionDataResponseDto } from '@openathlete/shared';
 
-import { CaslAbilityFactory } from 'src/modules/auth';
+import {
+  dayRangeInstants,
+  normalizeTimeZone,
+  startOfMonthAnchor,
+  startOfWeekAnchor,
+  toDayAnchor,
+} from 'src/common/utils/day-anchor';
 import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
+import { CaslAbilityFactory } from 'src/modules/auth/services/casl-ability.factory';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 
 @Injectable()
@@ -72,8 +83,22 @@ export class ProgressionService {
     if (!ability.can('read', 'Athlete')) {
       throw new ForbiddenException('Not allowed to access this athlete');
     }
+
+    const athlete = await this.prisma.athlete.findUnique({
+      where: { athleteId },
+      select: { timezone: true },
+    });
+    if (!athlete) {
+      throw new NotFoundException('Athlete not found');
+    }
+
+    const timeZone = normalizeTimeZone(athlete.timezone);
+    const startAnchor = toDayAnchor(startDate, timeZone);
+    const endAnchor = toDayAnchor(endDate, timeZone);
+    const rangeStart = dayRangeInstants(startAnchor, timeZone).start;
+    const rangeEnd = dayRangeInstants(endAnchor, timeZone).endExclusive;
     const daysDiff = Math.ceil(
-      (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+      (endAnchor.getTime() - startAnchor.getTime()) / (1000 * 60 * 60 * 24),
     );
     const aggregationType: 'week' | 'month' =
       daysDiff <= 120 ? 'week' : 'month';
@@ -83,8 +108,8 @@ export class ProgressionService {
       athleteId: athleteId,
       type: EventType.ACTIVITY,
       startDate: {
-        gte: startDate,
-        lte: endDate,
+        gte: rangeStart,
+        lt: rangeEnd,
       },
       activity: {
         isNot: null,
@@ -128,26 +153,13 @@ export class ProgressionService {
     const grouped = new Map<string, typeof activities>();
 
     activities.forEach((event) => {
-      const eventDate = new Date(event.startDate);
+      const eventDay = toDayAnchor(event.startDate, timeZone);
       let periodKey: string;
 
       if (aggregationType === 'week') {
-        // Get start of week (Monday)
-        const weekStart = new Date(eventDate);
-        const day = weekStart.getDay();
-        const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-        weekStart.setDate(diff);
-        weekStart.setHours(0, 0, 0, 0);
-        periodKey = weekStart.toISOString();
+        periodKey = startOfWeekAnchor(eventDay).toISOString();
       } else {
-        // Get start of month
-        const monthStart = new Date(
-          eventDate.getFullYear(),
-          eventDate.getMonth(),
-          1,
-        );
-        monthStart.setHours(0, 0, 0, 0);
-        periodKey = monthStart.toISOString();
+        periodKey = startOfMonthAnchor(eventDay).toISOString();
       }
 
       if (!grouped.has(periodKey)) {

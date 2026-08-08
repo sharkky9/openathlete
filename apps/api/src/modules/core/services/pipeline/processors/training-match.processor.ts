@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import {
+  dayRangeInstants,
+  normalizeTimeZone,
+  toDayAnchor,
+} from 'src/common/utils/day-anchor';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 
 import { TRAINING_MATCH_THRESHOLD } from '../constants';
@@ -27,6 +32,7 @@ export class TrainingMatchProcessor implements ActivityProcessor {
             startDate: true,
             endDate: true,
             athleteId: true,
+            athlete: { select: { timezone: true } },
           },
         },
         relatedTraining: {
@@ -53,10 +59,12 @@ export class TrainingMatchProcessor implements ActivityProcessor {
     }
 
     const activityDate = new Date(activity.event.startDate);
-    const dayStart = new Date(activityDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(activityDate);
-    dayEnd.setHours(23, 59, 59, 999);
+    const timeZone = normalizeTimeZone(activity.event.athlete?.timezone);
+    const activityDay = toDayAnchor(activityDate, timeZone);
+    const { start: dayStart, endExclusive: dayEnd } = dayRangeInstants(
+      activityDay,
+      timeZone,
+    );
 
     // Find all training sessions scheduled for the same day
     const trainingSessions = await this.prisma.eventTraining.findMany({
@@ -65,7 +73,7 @@ export class TrainingMatchProcessor implements ActivityProcessor {
           athleteId: activity.event.athleteId,
           startDate: {
             gte: dayStart,
-            lte: dayEnd,
+            lt: dayEnd,
           },
         },
         relatedActivityId: null, // Not already linked to an activity
