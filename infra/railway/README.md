@@ -19,7 +19,7 @@ The Railway-generated subdomains were renamed to `ultracully*`; renaming the `ap
 | --------------- | ------------------------------------------- | ------ | -------------------------------------------------- |
 | `postgres`      | Docker image `pgvector/pgvector:pg16`       | no     | Volume at `/var/lib/postgresql/data`; `vector` extension is required by the Prisma migrations |
 | `redis`         | Docker image `redis:7-alpine`               | no     | Volume at `/data`; used for BullMQ queues and the Socket.IO adapter |
-| `api`           | This repo, `apps/api/Dockerfile`            | yes    | Runs `prisma migrate deploy` on boot, then the NestJS server; health check on `/health` |
+| `api`           | This repo, `apps/api/Dockerfile`            | yes    | Runs `prisma migrate deploy` on boot, then the NestJS server; deploy health check on `/health/ready` (readiness: probes Postgres + Redis). `/health` stays as the plain liveness endpoint |
 | `web`           | This repo, `apps/web/Dockerfile`            | yes    | nginx serving the built SPA on port `80`            |
 | `backup`        | This repo, `infra/railway/backup/Dockerfile` | no    | Daily cron: dumps Postgres to the project bucket. See `BACKUP-RESTORE.md` |
 
