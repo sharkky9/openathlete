@@ -28,6 +28,11 @@ RUN pnpm build
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
+# Browser error monitoring DSN. Empty (the default) disables error reporting in
+# the built bundle; point it only at an account you own.
+ARG VITE_BETTER_STACK_DSN=""
+ENV VITE_BETTER_STACK_DSN=$VITE_BETTER_STACK_DSN
+
 WORKDIR /app/apps/web
 RUN pnpm build
 

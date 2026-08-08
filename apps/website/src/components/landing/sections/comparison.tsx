@@ -175,7 +175,7 @@ export function Comparison() {
       feature: m.landing_compare_row_6_feature,
       openathlete: {
         kind: 'status',
-        status: 'yes',
+        status: 'no',
         text: m.landing_compare_row_6_oa,
       },
       trainingpeaks: {

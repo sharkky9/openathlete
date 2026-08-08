@@ -58,10 +58,15 @@ and `.github/workflows/` files that upstream does not own. Do not scatter fork-s
 through the application, do not rename upstream concepts, and do not restructure upstream
 directories.
 
-Deleting an upstream file is a worse patch than neutralizing it in place: a deletion produces a
-modify/delete conflict every time upstream touches the file. Where an upstream workflow does not
-apply to this fork, guard it (see the `github.repository` condition in
-`.github/workflows/deploy.yml`) instead of removing it.
+Deleting an upstream file is usually a worse patch than neutralizing it in place: a deletion
+produces a modify/delete conflict every time upstream touches the file. Where an upstream workflow
+does not apply to this fork *today* but could become relevant, guard it — an `if: github.repository
+== 'openathleteorg/openathlete'` condition on the job keeps upstream's edits merging cleanly while
+the job stays skipped here. Delete only what can never run in this fork: upstream's Scaleway deploy
+workflow and its Scaleway Terraform stack were removed outright, because this fork deploys to
+Railway and has no Scaleway account to guard them for. Record every such deletion in
+`fork-delta.md` with the resolution a future merge needs — upstream will keep re-introducing the
+files, and the conflict has to be resolved in favour of the deletion each time.
 
 ## Contributing back
 
