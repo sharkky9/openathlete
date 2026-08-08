@@ -29,7 +29,7 @@
  *   DRY_RUN                         true by default; --apply overrides it
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 const BETTER_STACK_API_URL = "https://uptime.betterstack.com/api/v2";
@@ -358,7 +358,18 @@ const writeHeartbeatUrl = async (heartbeatUrl) => {
   }
   const outputPath = resolve(output);
   await mkdir(dirname(outputPath), { recursive: true, mode: 0o700 });
-  await writeFile(outputPath, `${heartbeatUrl}\n`, { mode: 0o600 });
+  const temporaryPath = `${outputPath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    await writeFile(temporaryPath, `${heartbeatUrl}\n`, {
+      mode: 0o600,
+      flag: "wx",
+    });
+    await chmod(temporaryPath, 0o600);
+    await rename(temporaryPath, outputPath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
   log(`heartbeat URL written securely to ${outputPath}`);
 };
 
