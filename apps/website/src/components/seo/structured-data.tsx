@@ -39,7 +39,7 @@ export function OrganizationStructuredData() {
         url: SITE_URL,
         logo: `${SITE_URL}/logo_dark.png`,
         description:
-          'Open-source endurance training platform: EU-oriented hosting, AGPLv3, transparent load metrics, self-hosting, and full data export.',
+          'Open-source endurance training platform: EU-oriented hosting, AGPLv3, transparent load metrics, and self-hosting.',
         contactPoint: {
           '@type': 'ContactPoint',
           email: 'contact@openathlete.org',

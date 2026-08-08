@@ -21,4 +21,5 @@ export * from './training-load.dto';
 export * from './workout.dto';
 export * from './athlete-settings.dto';
 export * from './provider-preferences.dto';
+export * from './provider-credentials.dto';
 export * from './injury.dto';

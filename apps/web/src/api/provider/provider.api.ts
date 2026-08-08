@@ -48,6 +48,22 @@ export class ProviderAPI {
     });
   }
 
+  /** For providers authenticated with a static API key (Intervals.icu). */
+  static async setCredentials({
+    provider,
+    apiKey,
+    athleteId,
+  }: {
+    provider: ConnectorProvider;
+    apiKey: string;
+    athleteId?: string;
+  }): Promise<void> {
+    await client.post(routes.provider.setCredentials(provider), {
+      apiKey,
+      ...(athleteId && { athleteId }),
+    });
+  }
+
   static async disconnect(
     provider: ConnectorProvider,
   ): Promise<{ success: boolean; message: string }> {

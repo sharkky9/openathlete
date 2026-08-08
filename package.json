@@ -4,7 +4,7 @@
   "description": "OpenAthlete monorepo",
   "author": "Tristan Bouillot <tristan@tblt.fr>",
   "packageManager": "pnpm@9.15.9",
-  "license": "MPL-2.0",
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": "22.14.0",
     "pnpm": "^9"

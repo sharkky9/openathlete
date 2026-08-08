@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "OpenAthlete marketing website",
   "author": "Tristan Bouillot <tristan@tblt.fr>",
-  "license": "MPL-2.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {

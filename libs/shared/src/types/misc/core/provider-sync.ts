@@ -59,6 +59,19 @@ const providerSpecificCapabilities: Partial<
     importMetrics: true,
     supportsFullImport: true,
   },
+  // Intervals.icu is an aggregator: activities (and their full 1 Hz streams) arrive
+  // from whatever the athlete has connected upstream (Garmin, Zwift, Strava, uploads).
+  // - importMetrics is false on purpose: the wellness endpoint exists, but in practice
+  //   it only reliably carries Intervals' own CTL/ATL. HRV / sleep / weight are sparse
+  //   to non-existent, so claiming metrics support would be misleading.
+  // - exportWorkouts is false for now: POST /events is supported by the API but writing
+  //   planned workouts back is deliberately out of scope for this integration.
+  INTERVALS_ICU: {
+    importActivities: true,
+    exportWorkouts: false,
+    importMetrics: false,
+    supportsFullImport: true,
+  },
 };
 
 export function getProviderSyncCapabilities(

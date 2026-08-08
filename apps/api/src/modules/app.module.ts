@@ -21,6 +21,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth';
 import { CalendarModule } from './calendar/calendar.module';
 import { CoreModule } from './core';
+import { HealthModule } from './health/health.module';
 import { MessagesModule } from './messages/messages.module';
 import { NotificationModule } from './notification';
 import { PrismaService } from './prisma/services/prisma.service';
@@ -58,6 +59,7 @@ import { SubscriptionModule } from './subscription';
     MessagesModule,
     CalendarModule,
     EventEmitterModule.forRoot(),
+    HealthModule,
     NotificationModule,
     ProvidersSyncModule,
     QueueModule,
