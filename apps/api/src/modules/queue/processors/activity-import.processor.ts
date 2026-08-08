@@ -77,8 +77,13 @@ export class ActivityImportProcessor extends WorkerHost {
         );
       }
 
-      const accountRunId = account.fullImportRequestedAt?.getTime().toString();
-      const fullImportRunId = accountRunId ?? job.data.fullImportRunId;
+      const accountRunId =
+        bulkImport && !account.fullImportCompletedAt
+          ? account.fullImportRequestedAt?.getTime().toString()
+          : undefined;
+      const fullImportRunId = bulkImport
+        ? (accountRunId ?? job.data.fullImportRunId)
+        : undefined;
       if (fullImportRunId !== job.data.fullImportRunId) {
         await job.updateData({ ...job.data, fullImportRunId });
       }

@@ -817,7 +817,7 @@ export class IntervalsIcuProviderService
       return { queuedActivities: 0 };
     }
 
-    const queued = await this.enqueueActivities(account, activities);
+    const queued = await this.enqueueActivities(account, activities, true);
 
     this.logger.log(
       `Queued ${queued} Intervals.icu activities for import (out of ${activities.length} total)`,
@@ -826,9 +826,30 @@ export class IntervalsIcuProviderService
     return { queuedActivities: queued };
   }
 
+  /**
+   * Poll the recent Intervals.icu history and queue only activities that are not
+   * already stored. Personal API-key connections cannot receive webhooks, so
+   * this is the automatic-sync seam used by the scheduler.
+   */
+  async queueIncrementalImport(
+    account: ProviderAccount,
+  ): Promise<FullImportResult> {
+    this.queueService.assertActivityPipelineAvailable();
+
+    const activities = await this.importActivities(account);
+    const queued = await this.enqueueActivities(account, activities, false);
+
+    this.logger.log(
+      `Queued ${queued} new Intervals.icu activities for account ${account.providerAccountId}`,
+    );
+
+    return { queuedActivities: queued };
+  }
+
   private async enqueueActivities(
     account: ProviderAccount,
     activities: ImportedActivity[],
+    bulkImport: boolean,
   ): Promise<number> {
     if (activities.length === 0) {
       return 0;
@@ -854,7 +875,7 @@ export class IntervalsIcuProviderService
     return this.queueService.addActivityImportJobs(
       account,
       newActivities,
-      true,
+      bulkImport,
     );
   }
 }

@@ -561,7 +561,11 @@ describe('IntervalsIcuProviderService.importActivities', () => {
     jest
       .spyOn(service as unknown as ServiceInternals, 'createClient')
       .mockReturnValue({
-        get: async (_path, params = {}) => {
+        get: async (path, params = {}) => {
+          if (!path.endsWith('/activities')) {
+            return {};
+          }
+
           requests.push(params);
           if (requests.length === 1) {
             return Array.from({ length: 99 }, (_, index) =>
@@ -585,6 +589,12 @@ describe('IntervalsIcuProviderService.importActivities', () => {
     });
 
     expect(activities).toHaveLength(120);
+    expect(activities.map((activity) => activity.externalId)).toEqual(
+      expect.arrayContaining(['older-0', 'newer-0']),
+    );
+    expect(
+      new Set(activities.map((activity) => activity.externalId)).size,
+    ).toBe(120);
     expect(requests).toHaveLength(3);
     expect(requests[0]).toMatchObject({
       oldest: '2026-01-01',
@@ -599,6 +609,54 @@ describe('IntervalsIcuProviderService.importActivities', () => {
       `${String(splitRequests[1].oldest)}T00:00:00Z`,
     );
     expect(newerStart - olderEnd).toBe(DAY_MS);
+  });
+
+  it('polls recent activities and queues only new ones as non-bulk work', async () => {
+    const existing = listedActivity('existing', '2026-08-01');
+    const newActivity = listedActivity('new', '2026-08-02');
+    const prisma = {
+      athlete: {
+        update: jest.fn().mockResolvedValue(undefined),
+      },
+      trainingLoadEntry: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      eventActivity: {
+        findMany: jest.fn().mockResolvedValue([{ externalId: existing.id }]),
+      },
+    } as unknown as PrismaService;
+    const queueService = {
+      assertActivityPipelineAvailable: jest.fn(),
+      addActivityImportJobs: jest.fn().mockResolvedValue(1),
+    } as unknown as QueueService;
+    const service = new IntervalsIcuProviderService(
+      prisma,
+      {} as ConfigService<ApiEnvSchemaType, true>,
+      queueService,
+    );
+    const paths: string[] = [];
+    jest
+      .spyOn(service as unknown as ServiceInternals, 'createClient')
+      .mockReturnValue({
+        get: async (path) => {
+          paths.push(path);
+          return path.endsWith('/activities')
+            ? [existing, newActivity]
+            : { id: 'i123456' };
+        },
+      });
+
+    await expect(service.queueIncrementalImport(ACCOUNT)).resolves.toEqual({
+      queuedActivities: 1,
+    });
+
+    expect(paths).toContain('/athlete/0/activities');
+    expect(queueService.assertActivityPipelineAvailable).toHaveBeenCalled();
+    expect(queueService.addActivityImportJobs).toHaveBeenCalledWith(
+      ACCOUNT,
+      [expect.objectContaining({ externalId: 'new' })],
+      false,
+    );
   });
 
   it('fails closed when even a single-day response may be truncated', async () => {

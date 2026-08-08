@@ -2,32 +2,21 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { PATH_METADATA } from '@nestjs/common/constants';
 
 import { ConnectorProvider, ProviderAccount } from '@openathlete/database';
-import { ApiEnvSchemaType } from '@openathlete/shared';
 
 import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 import { FullImportCompletionService } from 'src/modules/queue/services/full-import-completion.service';
 
-import { CorosProviderService } from '../providers';
-import { GarminProviderService } from '../providers/garmin.provider.service';
 import { IntervalsIcuProviderService } from '../providers/intervals-icu.provider.service';
-import { PolarProviderService } from '../providers/polar.provider.service';
-import { StravaProviderService } from '../providers/strava.provider.service';
-import { SuuntoProviderService } from '../providers/suunto.provider.service';
 import { ProviderOAuthController } from './provider-oauth.controller';
 
 jest.mock('src/modules/auth', () => ({
   JwtUser: () => () => undefined,
   UserTypeGuard: class UserTypeGuard {},
 }));
-jest.mock('@garmin/fitsdk', () => ({
-  Decoder: class Decoder {},
-  Stream: class Stream {},
-}));
-
 const USER = { userId: 9 } as AuthUser;
 const ACCOUNT = {
   providerAccountId: 23,
@@ -64,12 +53,6 @@ function setup() {
     reconcile: jest.fn().mockResolvedValue('pending'),
   } as unknown as FullImportCompletionService;
   const controller = new ProviderOAuthController(
-    {} as ConfigService<ApiEnvSchemaType, true>,
-    {} as StravaProviderService,
-    {} as GarminProviderService,
-    {} as SuuntoProviderService,
-    {} as CorosProviderService,
-    {} as PolarProviderService,
     intervalsIcuProviderService,
     prisma,
     fullImportCompletionService,
@@ -90,6 +73,47 @@ function setup() {
 }
 
 describe('ProviderOAuthController full import', () => {
+  it('registers no retired provider webhook routes', () => {
+    const routes = Object.getOwnPropertyNames(
+      ProviderOAuthController.prototype,
+    ).flatMap((methodName) => {
+      const handler =
+        ProviderOAuthController.prototype[
+          methodName as keyof ProviderOAuthController
+        ];
+      const path = Reflect.getMetadata(PATH_METADATA, handler);
+      return typeof path === 'string' ? [path] : [];
+    });
+
+    expect(routes).not.toEqual(
+      expect.arrayContaining([
+        'strava/webhook',
+        'garmin/webhook/activity-ping',
+        'garmin/webhook/health-ping',
+        'garmin/webhook/activity-files',
+        'garmin/webhook/deregistration',
+        'garmin/webhook/user-permissions-change',
+        'polar/webhook',
+        'suunto/webhook',
+      ]),
+    );
+  });
+
+  it.each(['strava', 'garmin', 'suunto', 'polar', 'coros'])(
+    'rejects the retired %s provider before reading an account',
+    async (provider) => {
+      const { controller, intervalsIcuProviderService, prisma } = setup();
+
+      await expect(
+        controller.importAllActivities(USER, provider),
+      ).rejects.toThrow(`Provider ${provider} is not supported`);
+      expect(prisma.providerAccount.update).not.toHaveBeenCalled();
+      expect(
+        intervalsIcuProviderService.queueFullImport,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
   it('fails before latching or calling the provider when consumers are disabled', async () => {
     const {
       controller,

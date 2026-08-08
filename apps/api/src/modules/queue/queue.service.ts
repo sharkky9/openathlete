@@ -58,7 +58,11 @@ export class QueueService {
     }
   }
 
-  private fullImportRunId(account: ProviderAccount): string | undefined {
+  private fullImportRunId(
+    account: ProviderAccount,
+    bulkImport: boolean,
+  ): string | undefined {
+    if (!bulkImport || account.fullImportCompletedAt) return undefined;
     return account.fullImportRequestedAt?.getTime().toString();
   }
 
@@ -84,7 +88,7 @@ export class QueueService {
 
       const priority = this.calculatePriority(activity.startDate);
       const jobId = `import-${account.provider}-${activity.externalId}`;
-      const fullImportRunId = this.fullImportRunId(account);
+      const fullImportRunId = this.fullImportRunId(account, bulkImport);
 
       let existingJob;
       try {
@@ -149,7 +153,7 @@ export class QueueService {
     try {
       this.assertActivityPipelineAvailable();
 
-      const fullImportRunId = this.fullImportRunId(account);
+      const fullImportRunId = this.fullImportRunId(account, bulkImport);
       const sortedActivities = [...activities].sort(
         (a, b) =>
           new Date(b.startDate).getTime() - new Date(a.startDate).getTime(),

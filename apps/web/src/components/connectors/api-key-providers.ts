@@ -6,6 +6,11 @@ import { ConnectorProvider } from '@openathlete/shared';
  */
 export const API_KEY_PROVIDERS: ConnectorProvider[] = ['INTERVALS_ICU'];
 
+/** The single-user deployment intentionally exposes no direct wearable links. */
+export const SUPPORTED_CONNECTOR_PROVIDERS: ConnectorProvider[] = [
+  'INTERVALS_ICU',
+];
+
 export function isApiKeyProvider(provider: ConnectorProvider): boolean {
   return API_KEY_PROVIDERS.includes(provider);
 }

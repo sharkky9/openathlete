@@ -102,6 +102,25 @@ describe('QueueService activity pipeline contract', () => {
     ]);
   });
 
+  it('does not attach a completed full-import run to incremental jobs', async () => {
+    const { service, activityImportQueue } = setup();
+    const completedAccount = {
+      ...ACCOUNT,
+      fullImportCompletedAt: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    await service.addActivityImportJobs(completedAccount, [ACTIVITY], false);
+
+    expect(activityImportQueue.addBulk).toHaveBeenCalledWith([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          bulkImport: false,
+          fullImportRunId: undefined,
+        }),
+      }),
+    ]);
+  });
+
   it('does not accept processing work when its consumer is disabled', async () => {
     const { service, activityProcessingQueue } = setup({
       import: true,
