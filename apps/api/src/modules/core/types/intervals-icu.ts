@@ -29,7 +29,7 @@ export interface IntervalsIcuAthlete {
 }
 
 export interface IntervalsIcuActivity {
-  /** Opaque string id, e.g. "i167939639". */
+  /** Opaque string id, e.g. "i100000001". */
   id: string;
   name?: string | null;
   description?: string | null;

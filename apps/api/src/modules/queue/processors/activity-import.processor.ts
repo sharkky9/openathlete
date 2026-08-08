@@ -42,80 +42,14 @@ export class ActivityImportProcessor extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  async onFailed(job: Job<ActivityImportJobData>, error: Error) {
+  onFailed(job: Job<ActivityImportJobData>, error: Error) {
     this.logger.error(
       `Job ${job.id} (${job.data?.activity?.externalId || 'unknown'}) failed: ${error.message}`,
       error.stack,
     );
-
-    // Only once BullMQ has given up: an intermediate attempt is not a settled
-    // job, and counting it would end the run while retries were still pending.
-    const attemptsAllowed = job.opts?.attempts ?? 1;
-    if (job.attemptsMade >= attemptsAllowed) {
-      await this.settleBulkImport(job);
-    }
-  }
-
-  /**
-   * Account for one job of a historical import run reaching a final state.
-   *
-   * `fullImportCompletedAt` used to be stamped by the controller the moment the
-   * jobs were queued, which on a real 1,224-activity import read as "complete"
-   * 29 minutes before the last activity actually landed — and read as complete
-   * even for the activities that never landed at all. It is now written here,
-   * when the last job of the run has genuinely settled.
-   */
-  private async settleBulkImport(job: Job<ActivityImportJobData>) {
-    if (!job.data?.bulkImport) {
-      return;
-    }
-
-    const { providerAccountId } = job.data;
-
-    try {
-      const runFinished =
-        await this.queueService.settleFullImportJob(providerAccountId);
-
-      if (!runFinished) {
-        return;
-      }
-
-      // Scoped to an import that was actually asked for and has not been marked
-      // finished already, so a stray bulk job cannot invent a completed
-      // historical import on an account that never requested one.
-      await this.prisma.providerAccount.updateMany({
-        where: {
-          providerAccountId,
-          fullImportRequestedAt: { not: null },
-          fullImportCompletedAt: null,
-        },
-        data: {
-          fullImportCompletedAt: new Date(),
-        },
-      });
-
-      this.logger.log(
-        `Historical import finished for provider account ${providerAccountId}`,
-      );
-    } catch (error) {
-      // Never let bookkeeping change the outcome of an import.
-      this.logger.error(
-        `Failed to record full import completion for provider account ${providerAccountId}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
   }
 
   async process(job: Job<ActivityImportJobData>) {
-    const result = await this.runImport(job);
-
-    // Reached only when the import did not throw. A failure settles from
-    // `onFailed` instead, and only once BullMQ has stopped retrying.
-    await this.settleBulkImport(job);
-
-    return result;
-  }
-
-  private async runImport(job: Job<ActivityImportJobData>) {
     const { providerAccountId, activity, bulkImport } = job.data;
 
     try {

@@ -5,8 +5,10 @@ import {
 
 /**
  * Fixtures shaped after a live probe of a real Intervals.icu account, with the
- * athlete ID replaced by a placeholder and the long streams truncated to a
- * handful of samples.
+ * long streams truncated to a handful of samples and everything that identified
+ * the account replaced by obviously synthetic values: IDs, activity names, and
+ * the GPS track. This repository is public, and a ride's start coordinates give
+ * away a home address; none of it was load-bearing for any assertion.
  *
  * The field *set* is checked against the published `Activity` schema in
  * https://intervals.icu/api/v1/docs, which matters more than it sounds: an
@@ -19,8 +21,8 @@ import {
 
 /** Outdoor road ride recorded on a Garmin Edge 1040 with a Quarq power meter. */
 export const outdoorRideActivity: IntervalsIcuActivity = {
-  id: 'i167939639',
-  name: 'Marin County Road Cycling',
+  id: 'i100000001',
+  name: 'Sample Road Ride',
   type: 'Ride',
   sub_type: null,
   start_date: '2026-06-28T19:18:28Z',
@@ -48,7 +50,7 @@ export const outdoorRideActivity: IntervalsIcuActivity = {
   source: 'GARMIN_CONNECT',
   device_name: 'Garmin Edge 1040',
   file_type: 'fit',
-  external_id: '23411987686',
+  external_id: '1000000001',
   strava_id: null,
   trainer: null,
   gap: null,
@@ -70,8 +72,8 @@ export const outdoorRideActivity: IntervalsIcuActivity = {
 
 /** Zwift virtual run: no power stream, running-specific load. */
 export const virtualRunActivity: IntervalsIcuActivity = {
-  id: 'i173247669',
-  name: 'Zwift - Royal Pump Room 8 in Yorkshire',
+  id: 'i100000002',
+  name: 'Sample Virtual Run',
   type: 'VirtualRun',
   start_date: '2026-08-07T01:33:08Z',
   start_date_local: '2026-08-06T18:33:08',
@@ -91,7 +93,7 @@ export const virtualRunActivity: IntervalsIcuActivity = {
   device_name: 'ZWIFT 1',
   trainer: true,
   file_type: 'fit',
-  external_id: '2199138722820177968',
+  external_id: '1000000000000000002',
   stream_types: [
     'time',
     'cadence',
@@ -173,8 +175,8 @@ export const outdoorRideStreams: IntervalsIcuStream[] = [
   {
     type: 'latlng',
     name: null,
-    data: [37.906, 37.9061, 37.9063, 37.9065],
-    data2: [-122.5449, -122.5451, -122.5453, -122.5456],
+    data: [10.0, 10.0001, 10.0003, 10.0005],
+    data2: [20.0, 20.0002, 20.0004, 20.0007],
     valueType: 'java.lang.Float',
     valueTypeIsArray: false,
     allNull: false,

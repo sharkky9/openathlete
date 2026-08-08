@@ -114,10 +114,10 @@ describe('mergeIntervalsIcuStreams', () => {
     const merged = mergeIntervalsIcuStreams(outdoorRideStreams);
 
     expect(merged.latlng).toEqual([
-      [37.906, -122.5449],
-      [37.9061, -122.5451],
-      [37.9063, -122.5453],
-      [37.9065, -122.5456],
+      [10.0, 20.0],
+      [10.0001, 20.0002],
+      [10.0003, 20.0004],
+      [10.0005, 20.0007],
     ]);
   });
 
