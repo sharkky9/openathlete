@@ -22,6 +22,7 @@
  *   query  { me { name } }                                    - probe an account token
  *   query  { projectToken { projectId environmentId } }       - probe a project token
  *   query  { projects { edges { node { id name } } } }        - discover the project
+ *   query  { me { workspaces { team { projects ... } } } }    - discover it in a workspace
  *   query  project($id: String!)                              - environments + services
  *   query  variables($projectId:, $environmentId:, $serviceId:) - read variable map
  *   mutation variableDelete($input: VariableDeleteInput!)     - delete one variable
@@ -48,10 +49,14 @@
  * happens after merge and may well be re-run).
  *
  * Environment:
- *   RAILWAY_TOKEN       (required) account, workspace or project token
- *   RAILWAY_PROJECT_ID  (required only when the token sees >1 project)
- *   DRY_RUN             "true" (default) reports intent and changes nothing
- *   ENVIRONMENTS        comma-separated target names, default "staging"
+ *   RAILWAY_TOKEN             (required) account, workspace or project token
+ *   RAILWAY_PROJECT_ID_INPUT  project id typed at dispatch time; wins if set
+ *   RAILWAY_PROJECT_ID        project id from the repository Actions variable
+ *   DRY_RUN                   "true" (default) reports intent and changes nothing
+ *   ENVIRONMENTS              comma-separated target names, default "staging"
+ *
+ * Supplying a project id is not optional in practice: automatic discovery is
+ * best-effort, and when it comes back empty the id is the only way forward.
  *
  * Exit codes: 0 = clean (or dry run), 1 = failure / survivors / aborted guard.
  */
@@ -259,16 +264,73 @@ const PROJECT_QUERY = `
 const unwrap = (connection) =>
   (connection?.edges ?? []).map((edge) => edge?.node).filter(Boolean);
 
+/**
+ * The project id the operator supplied, if any.
+ *
+ * PRECEDENCE: the `project_id` workflow_dispatch input
+ * (RAILWAY_PROJECT_ID_INPUT) beats the RAILWAY_PROJECT_ID repository Actions
+ * variable, so an id can be pasted at dispatch time without a round trip
+ * through repository settings. Either one skips discovery entirely.
+ */
+const explicitProjectId = () => {
+  const fromInput = process.env.RAILWAY_PROJECT_ID_INPUT?.trim();
+  if (fromInput) return { id: fromInput, source: 'the project_id dispatch input' };
+
+  const fromVariable = process.env.RAILWAY_PROJECT_ID?.trim();
+  if (fromVariable) {
+    return { id: fromVariable, source: 'the RAILWAY_PROJECT_ID repository variable' };
+  }
+
+  return { id: '', source: '' };
+};
+
+const tooManyProjects = (projects) =>
+  new FatalError(
+    'This token can see more than one Railway project, and this script will ' +
+      'not guess which one to purge. Supply one of these ids as the ' +
+      '`project_id` dispatch input or as the RAILWAY_PROJECT_ID repository ' +
+      'variable:\n' +
+      projects.map((p) => `  - ${p.name} (${p.id})`).join('\n'),
+  );
+
+/**
+ * Last-resort discovery for a project owned by a workspace/team rather than by
+ * the token owner personally. Only ever called when the root `projects` query
+ * returned zero edges.
+ *
+ * STRICTLY ADDITIVE, AND DELIBERATELY SO. These field names come from Railway's
+ * documentation, not from schema introspection — the same un-introspected guess
+ * that produced the misdiagnosis this function exists to soften. So every error
+ * is swallowed: if the query is rejected, the shape has changed, or it simply
+ * finds nothing, the caller falls through to exactly the behaviour it had
+ * before this function existed. It can only ever add an answer, never take one
+ * away and never fail a run on its own.
+ */
+async function discoverWorkspaceProjects(auth) {
+  try {
+    const data = await graphql(
+      auth.headers,
+      'query { me { workspaces { team { projects { edges { node { id name } } } } } } }',
+    );
+    const workspaces = Array.isArray(data?.me?.workspaces)
+      ? data.me.workspaces
+      : [];
+    return workspaces.flatMap((workspace) => unwrap(workspace?.team?.projects));
+  } catch {
+    return [];
+  }
+}
+
 /** Pick the project to operate on, refusing to guess between several. */
 async function resolveProjectId(auth) {
-  const explicitId = process.env.RAILWAY_PROJECT_ID?.trim();
+  const { id: explicitId, source: explicitSource } = explicitProjectId();
 
   if (auth.kind === 'project') {
     const tokenProjectId = auth.projectToken.projectId;
     if (explicitId && explicitId !== tokenProjectId) {
       throw new FatalError(
-        `RAILWAY_PROJECT_ID (${explicitId}) does not match the project this ` +
-          `project token belongs to (${tokenProjectId}).`,
+        `The project id ${explicitId} (from ${explicitSource}) does not match ` +
+          `the project this project token belongs to (${tokenProjectId}).`,
       );
     }
     log(`Token kind      : project token (scoped to one project)`);
@@ -287,26 +349,46 @@ async function resolveProjectId(auth) {
     const match = projects.find((project) => project.id === explicitId);
     if (!match && projects.length > 0) {
       throw new FatalError(
-        `RAILWAY_PROJECT_ID (${explicitId}) is not among the projects this ` +
-          `token can see: ${fmtList(projects.map((p) => `${p.name} (${p.id})`))}`,
+        `The project id ${explicitId} (from ${explicitSource}) is not among ` +
+          `the projects this token can see: ` +
+          fmtList(projects.map((p) => `${p.name} (${p.id})`)),
       );
     }
+    log(`Project id      : ${explicitId} (from ${explicitSource}; discovery skipped)`);
     return explicitId;
   }
 
   if (projects.length === 0) {
+    // The root query answered, with an empty list. Try the workspace-scoped
+    // query before giving up; it is best-effort and never throws (see above).
+    const workspaceProjects = await discoverWorkspaceProjects(auth);
+
+    if (workspaceProjects.length === 1) {
+      log('Discovery       : root projects query was empty; found the project via a workspace');
+      return workspaceProjects[0].id;
+    }
+    if (workspaceProjects.length > 1) {
+      log('Discovery       : root projects query was empty; found several projects via workspaces');
+      throw tooManyProjects(workspaceProjects);
+    }
+
     throw new FatalError(
-      'This token can see no Railway projects. Check that it belongs to the ' +
-        'workspace that owns the OpenAthlete project.',
+      'Project discovery found nothing. The token authenticated successfully, ' +
+        'but the root `projects` query returned an empty list and no project ' +
+        'was reachable through the token owner\'s workspaces either.\n' +
+        'This is what it looks like when the project belongs to a workspace ' +
+        '(team) rather than to the token owner directly — the token is fine, ' +
+        'the project is simply not listed where these queries look.\n' +
+        'Supply the project id and discovery is skipped altogether: paste it ' +
+        'into the workflow\'s `project_id` dispatch input, or set the ' +
+        'RAILWAY_PROJECT_ID repository Actions variable (Settings -> Secrets ' +
+        'and variables -> Actions -> Variables). The id is in the Railway ' +
+        'project URL and under project Settings -> General.',
     );
   }
 
   if (projects.length > 1) {
-    throw new FatalError(
-      'This token can see more than one Railway project, and this script will ' +
-        'not guess which one to purge. Set RAILWAY_PROJECT_ID to one of:\n' +
-        projects.map((p) => `  - ${p.name} (${p.id})`).join('\n'),
-    );
+    throw tooManyProjects(projects);
   }
 
   return projects[0].id;
