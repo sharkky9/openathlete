@@ -30,12 +30,6 @@ const PasswordResetRequestPage = lazy(() =>
   })),
 );
 
-const OAuthCallbackPage = lazy(() =>
-  import('@/pages/auth/oauth-callback').then((module) => ({
-    default: module.OAuthCallbackPage,
-  })),
-);
-
 export const authRoutes: RouteObject[] = [
   {
     path: getPath(['auth']),
@@ -80,13 +74,5 @@ export const authRoutes: RouteObject[] = [
         ),
       },
     ],
-  },
-  {
-    path: getPath(['auth', 'oauth']),
-    element: (
-      <Suspense fallback={<LoadingScreen />}>
-        <OAuthCallbackPage />
-      </Suspense>
-    ),
   },
 ];

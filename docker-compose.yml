@@ -66,34 +66,9 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173}
       
-      # Strava OAuth (optional - Strava stays disconnected when unset)
-      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
-      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
-      STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI:-http://localhost:3000/api/auth/strava/callback}
-      STRAVA_WEBHOOK_TOKEN: ${STRAVA_WEBHOOK_TOKEN}
-      
-      # Polar OAuth (optional - Polar stays disconnected when unset)
-      POLAR_CLIENT_ID: ${POLAR_CLIENT_ID}
-      POLAR_CLIENT_SECRET: ${POLAR_CLIENT_SECRET}
-      POLAR_REDIRECT_URI: ${POLAR_REDIRECT_URI:-http://localhost:3000/api/auth/polar/callback}
-      POLAR_WEBHOOK_URL: ${POLAR_WEBHOOK_URL:-http://localhost:3000/api/webhooks/polar}
-      POLAR_WEBHOOK_SECRET_KEY: ${POLAR_WEBHOOK_SECRET_KEY}
-      
       # Email service (Brevo, optional - emails are skipped when unset)
       BREVO_API_KEY: ${BREVO_API_KEY}
       BREVO_FROM_EMAIL: ${BREVO_FROM_EMAIL}
-      
-      # Optional OAuth providers
-      GARMIN_CLIENT_ID: ${GARMIN_CLIENT_ID:-}
-      GARMIN_CLIENT_SECRET: ${GARMIN_CLIENT_SECRET:-}
-      GARMIN_REDIRECT_URI: ${GARMIN_REDIRECT_URI:-}
-      SUUNTO_CLIENT_ID: ${SUUNTO_CLIENT_ID:-}
-      SUUNTO_CLIENT_SECRET: ${SUUNTO_CLIENT_SECRET:-}
-      SUUNTO_REDIRECT_URI: ${SUUNTO_REDIRECT_URI:-}
-      SUUNTO_SUBSCRIPTION_KEY: ${SUUNTO_SUBSCRIPTION_KEY:-}
-      COROS_CLIENT_ID: ${COROS_CLIENT_ID:-}
-      COROS_CLIENT_SECRET: ${COROS_CLIENT_SECRET:-}
-      COROS_REDIRECT_URI: ${COROS_REDIRECT_URI:-}
       
       # Firebase (optional)
       FIREBASE_FUNCTIONS_URL: ${FIREBASE_FUNCTIONS_URL:-}

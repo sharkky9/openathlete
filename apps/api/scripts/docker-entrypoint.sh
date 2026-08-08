@@ -83,12 +83,6 @@ if [ -n "$REDIS_URL" ]; then
 fi
 
 decode_secret "BREVO_API_KEY"
-decode_secret "GARMIN_CLIENT_SECRET"
-decode_secret "POLAR_CLIENT_SECRET"
-decode_secret "POLAR_WEBHOOK_SECRET_KEY"
-decode_secret "STRAVA_WEBHOOK_TOKEN"
-# decode_secret "SUUNTO_CLIENT_SECRET"
-# decode_secret "SUUNTO_SUBSCRIPTION_KEY"
 decode_secret "HASH_PEPPER"
 decode_secret "BETTER_STACK_DSN"
 decode_secret "FIREBASE_FUNCTIONS_URL"

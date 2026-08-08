@@ -3,13 +3,7 @@ import { Job } from 'bullmq';
 import { ConnectorProvider, ProviderAccount } from '@openathlete/database';
 
 import { PrismaService } from '../../prisma/services/prisma.service';
-import {
-  GarminProviderService,
-  IntervalsIcuProviderService,
-  PolarProviderService,
-  StravaProviderService,
-  SuuntoProviderService,
-} from '../../providers-sync/providers';
+import { IntervalsIcuProviderService } from '../../providers-sync/providers/intervals-icu.provider.service';
 import { ActivityImportJobData, QueueService } from '../queue.service';
 import { ActivityImportProcessor } from './activity-import.processor';
 
@@ -52,10 +46,6 @@ function setup(account: ProviderAccount = ACCOUNT) {
   } as unknown as QueueService;
   const processor = new ActivityImportProcessor(
     prisma,
-    {} as StravaProviderService,
-    {} as GarminProviderService,
-    {} as PolarProviderService,
-    {} as SuuntoProviderService,
     intervalsIcuProviderService,
     queueService,
   );
@@ -110,6 +100,27 @@ describe('ActivityImportProcessor full import contract', () => {
 
     await expect(processor.process(job)).rejects.toThrow(
       'Importing activities is disabled',
+    );
+    expect(intervalsIcuProviderService.importActivity).not.toHaveBeenCalled();
+    expect(queueService.addActivityProcessingJob).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ConnectorProvider.STRAVA,
+    ConnectorProvider.GARMIN,
+    ConnectorProvider.POLAR,
+    ConnectorProvider.SUUNTO,
+    ConnectorProvider.COROS,
+  ])('rejects queued jobs for retired provider %s', async (provider) => {
+    const { processor, queueService, intervalsIcuProviderService, job } = setup(
+      {
+        ...ACCOUNT,
+        provider,
+      } as ProviderAccount,
+    );
+
+    await expect(processor.process(job)).rejects.toThrow(
+      `Provider ${provider} is not supported by this deployment`,
     );
     expect(intervalsIcuProviderService.importActivity).not.toHaveBeenCalled();
     expect(queueService.addActivityProcessingJob).not.toHaveBeenCalled();

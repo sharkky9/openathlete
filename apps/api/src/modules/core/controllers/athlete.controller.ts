@@ -292,8 +292,7 @@ export class AthleteController {
   })
   @ApiResponse({
     status: 400,
-    description:
-      'Bad request - cannot invite yourself or coach has reached athlete limit',
+    description: 'Bad request - cannot invite yourself',
   })
   @ApiResponse({
     status: 401,
@@ -726,7 +725,7 @@ export class AthleteController {
   @ApiResponse({
     status: 400,
     description:
-      'Bad request - invitation not for this user, no longer pending, or coach has reached athlete limit',
+      'Bad request - invitation not for this user or no longer pending',
   })
   @ApiResponse({
     status: 401,

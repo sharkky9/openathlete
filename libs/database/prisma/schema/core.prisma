@@ -82,7 +82,7 @@ model ProviderAccount {
   /// Whether to automatically import activities from this provider
   importActivitiesEnabled Boolean               @default(true) @map("import_activities_enabled")
   /// Whether to export planned workouts to this provider
-  exportWorkoutsEnabled   Boolean               @default(true) @map("export_workouts_enabled")
+  exportWorkoutsEnabled   Boolean               @default(false) @map("export_workouts_enabled")
   /// Whether to import health metrics (HRV, sleep, etc.) from this provider
   importMetricsEnabled    Boolean               @default(false) @map("import_metrics_enabled")
   /// Timestamp when a full historical import was requested

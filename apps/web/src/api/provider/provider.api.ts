@@ -13,11 +13,6 @@ export interface ConnectedProvider {
   fullImportCompletedAt: string | null;
 }
 
-export interface GetOAuthUriResponse {
-  uri: string;
-  codeVerifier?: string; // For PKCE providers like Garmin
-}
-
 export interface ImportAllActivitiesResponse {
   status: 'accepted' | 'completed';
   completed: boolean;
@@ -28,28 +23,6 @@ export interface ImportAllActivitiesResponse {
 }
 
 export class ProviderAPI {
-  static async getOAuthUri(
-    provider: ConnectorProvider,
-  ): Promise<GetOAuthUriResponse> {
-    const res = await client.get(routes.provider.getOAuthUri(provider));
-    return res.data;
-  }
-
-  static async setOAuthToken({
-    provider,
-    code,
-    codeVerifier,
-  }: {
-    provider: ConnectorProvider;
-    code: string;
-    codeVerifier?: string;
-  }): Promise<void> {
-    await client.post(routes.provider.setOAuthToken(provider), {
-      code,
-      ...(codeVerifier && { codeVerifier }),
-    });
-  }
-
   /** For providers authenticated with a static API key (Intervals.icu). */
   static async setCredentials({
     provider,

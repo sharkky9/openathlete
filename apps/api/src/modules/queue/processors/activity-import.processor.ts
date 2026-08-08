@@ -9,13 +9,7 @@ import { CompressedActivityStream } from '@openathlete/shared';
 import { uncompressActivityStream } from '../../core/helpers/activity-stream';
 import { computeRecords } from '../../core/helpers/record';
 import { PrismaService } from '../../prisma/services/prisma.service';
-import {
-  GarminProviderService,
-  IntervalsIcuProviderService,
-  PolarProviderService,
-  StravaProviderService,
-  SuuntoProviderService,
-} from '../../providers-sync/providers';
+import { IntervalsIcuProviderService } from '../../providers-sync/providers/intervals-icu.provider.service';
 import { ActivityImportJobData, QueueService } from '../queue.service';
 
 @Processor('activity-import', {
@@ -26,14 +20,6 @@ export class ActivityImportProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(forwardRef(() => StravaProviderService))
-    private readonly stravaProviderService: StravaProviderService,
-    @Inject(forwardRef(() => GarminProviderService))
-    private readonly garminProviderService: GarminProviderService,
-    @Inject(forwardRef(() => PolarProviderService))
-    private readonly polarProviderService: PolarProviderService,
-    @Inject(forwardRef(() => SuuntoProviderService))
-    private readonly suuntoProviderService: SuuntoProviderService,
     @Inject(forwardRef(() => IntervalsIcuProviderService))
     private readonly intervalsIcuProviderService: IntervalsIcuProviderService,
     private readonly queueService: QueueService,
@@ -65,6 +51,12 @@ export class ActivityImportProcessor extends WorkerHost {
         throw new Error(`Provider account ${providerAccountId} not found`);
       }
 
+      if (account.provider !== ConnectorProvider.INTERVALS_ICU) {
+        throw new Error(
+          `Provider ${account.provider} is not supported by this deployment`,
+        );
+      }
+
       if (account.status !== 'active') {
         throw new Error(
           `Provider account ${providerAccountId} is not active (status: ${account.status})`,
@@ -90,37 +82,11 @@ export class ActivityImportProcessor extends WorkerHost {
 
       await job.updateProgress(30);
 
-      let savedActivity: EventActivity;
-      if (account.provider === ConnectorProvider.STRAVA) {
-        savedActivity = await this.stravaProviderService.importActivity(
+      const savedActivity: EventActivity =
+        await this.intervalsIcuProviderService.importActivity(
           account,
           activity,
         );
-      } else if (account.provider === ConnectorProvider.GARMIN) {
-        savedActivity = await this.garminProviderService.importActivity(
-          account,
-          activity,
-        );
-      } else if (account.provider === ConnectorProvider.POLAR) {
-        savedActivity = await this.polarProviderService.importActivity(
-          account,
-          activity,
-        );
-      } else if (account.provider === ConnectorProvider.SUUNTO) {
-        savedActivity = await this.suuntoProviderService.importActivity(
-          account,
-          activity,
-        );
-      } else if (account.provider === ConnectorProvider.INTERVALS_ICU) {
-        savedActivity = await this.intervalsIcuProviderService.importActivity(
-          account,
-          activity,
-        );
-      } else {
-        throw new Error(
-          `Provider ${account.provider} does not support activity import yet`,
-        );
-      }
 
       await job.updateProgress(60);
 
@@ -156,18 +122,6 @@ export class ActivityImportProcessor extends WorkerHost {
       }
 
       await job.updateProgress(90);
-
-      if (
-        account.provider === ConnectorProvider.GARMIN &&
-        !activityWithStream?.stream
-      ) {
-        return {
-          success: true,
-          eventActivityId: savedActivity.eventActivityId,
-          eventId: savedActivity.eventId,
-          waitingForStream: true,
-        };
-      }
 
       await this.queueService.addActivityProcessingJob(
         savedActivity.eventActivityId,

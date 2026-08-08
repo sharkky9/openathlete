@@ -70,15 +70,6 @@ jobs:
             -e REDIS_URL=redis://localhost:6379/0 \
             -e HASH_PEPPER=ci.hash.pepper.not.a.secret.min.32.characters \
             -e JWT_SECRET_KEY=ci.jwt.secret.key.not.a.secret.min.32.characters \
-            -e STRAVA_CLIENT_ID=ci \
-            -e STRAVA_CLIENT_SECRET=ci \
-            -e STRAVA_REDIRECT_URI=http://localhost:3000/auth/strava/callback \
-            -e STRAVA_WEBHOOK_TOKEN=ci.strava.webhook.token \
-            -e POLAR_CLIENT_ID=ci \
-            -e POLAR_CLIENT_SECRET=ci.polar.client.secret \
-            -e POLAR_REDIRECT_URI=http://localhost:3000/auth/polar/callback \
-            -e POLAR_WEBHOOK_URL=http://localhost:3000/webhooks/polar \
-            -e POLAR_WEBHOOK_SECRET_KEY=ci.polar.webhook.secret \
             -e BREVO_API_KEY=ci.brevo.api.key \
             -e BREVO_FROM_EMAIL=ci@example.com \
             openathlete-api:ci
@@ -258,15 +249,6 @@ jobs:
             -e REDIS_URL=redis://localhost:6379/0 \
             -e HASH_PEPPER=ci.hash.pepper.not.a.secret.min.32.characters \
             -e JWT_SECRET_KEY=ci.jwt.secret.key.not.a.secret.min.32.characters \
-            -e STRAVA_CLIENT_ID=ci \
-            -e STRAVA_CLIENT_SECRET=ci \
-            -e STRAVA_REDIRECT_URI=http://localhost:3000/auth/strava/callback \
-            -e STRAVA_WEBHOOK_TOKEN=ci.strava.webhook.token \
-            -e POLAR_CLIENT_ID=ci \
-            -e POLAR_CLIENT_SECRET=ci.polar.client.secret \
-            -e POLAR_REDIRECT_URI=http://localhost:3000/auth/polar/callback \
-            -e POLAR_WEBHOOK_URL=http://localhost:3000/webhooks/polar \
-            -e POLAR_WEBHOOK_SECRET_KEY=ci.polar.webhook.secret \
             -e BREVO_API_KEY=ci.brevo.api.key \
             -e BREVO_FROM_EMAIL=ci@example.com \
             openathlete-api:ci

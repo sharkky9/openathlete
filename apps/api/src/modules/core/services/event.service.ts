@@ -59,7 +59,6 @@ import { MessageThreadService } from 'src/modules/messages/services/message-thre
 import { MessageService } from 'src/modules/messages/services/message.service';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 
-import { ProviderExportService } from '../../providers-sync/export.service';
 import {
   reductActivityStreamToResolution,
   uncompressActivityStream,
@@ -79,7 +78,6 @@ export class EventService {
     private eventEmitter: EventEmitter2,
     private messageThreadService: MessageThreadService,
     private messageService: MessageService,
-    private readonly providerExportService: ProviderExportService,
     @Inject(forwardRef(() => WorkoutService))
     private workoutService: WorkoutService,
     @Optional()
@@ -654,12 +652,6 @@ export class EventService {
 
     if (!event) {
       throw new NotFoundException('Event not found');
-    }
-
-    if (event.training?.workout?.workoutId) {
-      await this.providerExportService.deleteExportsForWorkout({
-        workoutId: event.training.workout.workoutId,
-      });
     }
 
     await this.prisma.providerWorkoutExport.deleteMany({

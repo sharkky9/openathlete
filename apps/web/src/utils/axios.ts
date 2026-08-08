@@ -98,10 +98,6 @@ export const routes = {
     getInjuries: '/injury',
   },
   provider: {
-    getOAuthUri: (provider: ConnectorProvider) =>
-      `/provider/${provider.toLowerCase()}/uri`,
-    setOAuthToken: (provider: ConnectorProvider) =>
-      `/provider/${provider.toLowerCase()}/token`,
     setCredentials: (provider: ConnectorProvider) =>
       `/provider/${provider.toLowerCase()}/credentials`,
     disconnect: (provider: ConnectorProvider) =>

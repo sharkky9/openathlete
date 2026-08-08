@@ -1,8 +1,6 @@
 PODS:
   - Capacitor (7.4.4):
     - CapacitorCordova
-  - CapacitorBrowser (7.0.2):
-    - Capacitor
   - CapacitorCommunitySafeArea (7.0.0):
     - Capacitor
   - CapacitorCordova (7.4.4)
@@ -137,7 +135,6 @@ PODS:
 
 DEPENDENCIES:
   - "Capacitor (from `../../../../node_modules/.pnpm/@capacitor+ios@7.4.4_@capacitor+core@7.4.4/node_modules/@capacitor/ios`)"
-  - "CapacitorBrowser (from `../../../../node_modules/.pnpm/@capacitor+browser@7.0.2_@capacitor+core@7.4.4/node_modules/@capacitor/browser`)"
   - "CapacitorCommunitySafeArea (from `../../../../node_modules/.pnpm/@capacitor-community+safe-area@7.0.0_@capacitor+core@7.4.4/node_modules/@capacitor-community/safe-area`)"
   - "CapacitorCordova (from `../../../../node_modules/.pnpm/@capacitor+ios@7.4.4_@capacitor+core@7.4.4/node_modules/@capacitor/ios`)"
   - "CapacitorFirebaseAuthentication (from `../../../../node_modules/.pnpm/@capacitor-firebase+authentication@7.4.0_@capacitor+core@7.4.4_firebase@11.10.0/node_modules/@capacitor-firebase/authentication`)"
@@ -169,8 +166,6 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   Capacitor:
     :path: "../../../../node_modules/.pnpm/@capacitor+ios@7.4.4_@capacitor+core@7.4.4/node_modules/@capacitor/ios"
-  CapacitorBrowser:
-    :path: "../../../../node_modules/.pnpm/@capacitor+browser@7.0.2_@capacitor+core@7.4.4/node_modules/@capacitor/browser"
   CapacitorCommunitySafeArea:
     :path: "../../../../node_modules/.pnpm/@capacitor-community+safe-area@7.0.0_@capacitor+core@7.4.4/node_modules/@capacitor-community/safe-area"
   CapacitorCordova:
@@ -184,7 +179,6 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Capacitor: 358dd1c3fdd71d969547b17e159fd8a7736cb45f
-  CapacitorBrowser: 22541e48442de44dc629c214388290d6eecc6ae9
   CapacitorCommunitySafeArea: 211e919d3f0ff6020a3b2acb3b772fa30fb685ef
   CapacitorCordova: bf648a636f3c153f652d312ae145fb508b6ffced
   CapacitorFirebaseAuthentication: 2297f469e0f7a51a19446d28c452179675dfc330
