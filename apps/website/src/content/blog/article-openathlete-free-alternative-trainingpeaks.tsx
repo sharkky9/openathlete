@@ -287,7 +287,7 @@ export const articleOpenathleteFreeAlternativeTrainingpeaks: BlogPost = {
               <td>Device Integration</td>
               <td>✅ Extensive</td>
               <td>✅ Good</td>
-              <td>✅ Good (Garmin, Strava, Suunto, Polar, Coros)</td>
+              <td>✅ Good (Garmin, Strava, Suunto, Polar)</td>
             </tr>
           </tbody>
         </table>
@@ -433,9 +433,9 @@ export const articleOpenathleteFreeAlternativeTrainingpeaks: BlogPost = {
 
         <h3>Can I import my TrainingPeaks data?</h3>
         <p>
-          Yes! OpenAthlete can import your complete training history from
-          Garmin, Strava, and other devices. Simply connect your devices and
-          your data will be automatically imported.
+          Not directly—there is no TrainingPeaks connector today. What you can
+          do is connect the platforms your data already lives on: Garmin,
+          Strava, Suunto, and Polar. Their history is imported automatically.
         </p>
 
         <h3>How does OpenAthlete compare to TrainingPeaks?</h3>
@@ -734,7 +734,7 @@ export const articleOpenathleteFreeAlternativeTrainingpeaks: BlogPost = {
               <td>Intégration d'Appareils</td>
               <td>✅ Étendue</td>
               <td>✅ Bonne</td>
-              <td>✅ Bonne (Garmin, Strava, Suunto, Polar, Coros)</td>
+              <td>✅ Bonne (Garmin, Strava, Suunto, Polar)</td>
             </tr>
           </tbody>
         </table>
@@ -891,10 +891,10 @@ export const articleOpenathleteFreeAlternativeTrainingpeaks: BlogPost = {
 
         <h3>Puis-je importer mes données TrainingPeaks ?</h3>
         <p>
-          Oui ! OpenAthlete peut importer votre historique d'entraînement
-          complet depuis Garmin, Strava et autres appareils. Connectez
-          simplement vos appareils et vos données seront automatiquement
-          importées.
+          Pas directement : il n'existe pas de connecteur TrainingPeaks
+          aujourd'hui. En revanche, vous pouvez connecter les plateformes où vos
+          données se trouvent déjà : Garmin, Strava, Suunto et Polar. Leur
+          historique est importé automatiquement.
         </p>
 
         <h3>Comment OpenAthlete se compare-t-il à TrainingPeaks ?</h3>
