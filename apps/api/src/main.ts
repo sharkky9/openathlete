@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { ApiEnvSchemaType, ENV } from '@openathlete/shared';
 
+import { configureTrustProxy } from './common/utils/client-ip.util';
 import './instrument';
 import { AppModule } from './modules/app.module';
 
@@ -40,9 +41,13 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, document);
   }
 
-  // Railway terminates TLS in front of the app, so without this every request
-  // carries the proxy's IP and all clients would share a single throttle bucket.
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  // Railway terminates TLS in front of the app, so the client address only
+  // exists in `X-Forwarded-For` and Express has to be told which entries of it
+  // belong to us. This trusts by address rather than by hop count: a count
+  // (`'trust proxy', 1`) made Express return Railway's internal hop as the
+  // client, which varies per edge node, so every caller behind one edge node
+  // landed in a single throttle bucket. See client-ip.util.ts.
+  configureTrustProxy(app);
 
   const port = configService.get('PORT') ?? '3000';
   await app.listen(Number.parseInt(port, 10));

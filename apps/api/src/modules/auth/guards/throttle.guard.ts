@@ -7,6 +7,11 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
+import {
+  ClientAddressedRequest,
+  resolveClientIp,
+} from 'src/common/utils/client-ip.util';
+
 export interface ThrottleOptions {
   /** Requests allowed per client, per window. */
   limit: number;
@@ -40,12 +45,11 @@ interface ThrottleWindow {
 
 /**
  * Shape of the pieces of the Express request/response this guard touches. Typed
- * structurally so the guard stays independent of the HTTP adapter.
+ * structurally so the guard stays independent of the HTTP adapter. The request
+ * half is owned by the client-IP util, so changing how the client address is
+ * resolved does not reach into this file.
  */
-interface ThrottledRequest {
-  ip?: string;
-  ips?: string[];
-}
+type ThrottledRequest = ClientAddressedRequest;
 
 interface ThrottledResponse {
   setHeader(name: string, value: string | number): void;
@@ -112,12 +116,14 @@ export class ThrottleGuard implements CanActivate {
    * One bucket per client *and* handler, so a burst of logins cannot exhaust
    * the budget for password resets (and vice versa).
    *
-   * `req.ips` is populated by Express only when `trust proxy` is set, which
-   * main.ts does; its first entry is the original client rather than Railway's
-   * edge, which would otherwise put every caller in one bucket.
+   * The client half comes from `resolveClientIp`, which returns the address
+   * Express already worked out from `X-Forwarded-For` against the trusted-proxy
+   * list `main.ts` installs. The guard deliberately does no header parsing of
+   * its own: behind a proxy the only difference between the caller's address
+   * and an address the caller made up is that trust configuration.
    */
   private buildKey(request: ThrottledRequest, context: ExecutionContext) {
-    const clientIp = request.ips?.[0] ?? request.ip ?? 'unknown';
+    const clientIp = resolveClientIp(request);
     return `${clientIp}|${context.getClass().name}.${context.getHandler().name}`;
   }
 
