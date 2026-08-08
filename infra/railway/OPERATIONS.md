@@ -50,6 +50,87 @@ Note that a preview only redeploys when the push touches a service's `watchPatte
 (`infra/railway/api.railway.json`, `web.railway.json`). Deploy the service manually from the
 Railway UI to pick up a change outside those paths.
 
+## Running Railway operations from CI
+
+`.github/workflows/railway-ops.yml` ("Railway ops") runs Railway CLI operations from GitHub
+Actions using the `RAILWAY_TOKEN` repository secret, so routine operations do not require anyone
+to hold the Railway token on their laptop. It is **manual only** (`workflow_dispatch`) — it is an
+operator tool, not a merge gate, and nothing about it runs on a push or a pull request.
+
+Run it from **Actions → Railway ops → Run workflow**, or with the GitHub CLI:
+
+```sh
+gh workflow run railway-ops.yml -f operation=status -f environment=staging -f service=api
+gh workflow run railway-ops.yml -f operation=list-variables -f environment=staging -f service=api
+gh workflow run railway-ops.yml -f operation=redeploy -f environment=production -f service=api \
+  -f confirm=production
+```
+
+| Input | Values | Meaning |
+| ----- | ------ | ------- |
+| `operation` | `status`, `list-variables`, `set-variable`, `redeploy` | What to do. `status` and `list-variables` are read-only. |
+| `environment` | `staging`, `production` | Railway environment to act on. Defaults to `staging`. |
+| `service` | `api`, `web`, `backup`, `postgres`, `redis` | Railway service to act on. Defaults to `api`. |
+| `key` | variable name | `set-variable` only. Must match `^[A-Za-z_][A-Za-z0-9_]*$`. |
+| `value` | variable value | `set-variable` only. Never printed — see below. |
+| `confirm` | `production` | Required to change production. |
+
+Each operation maps to one Railway CLI command (verified against CLI `5.33.0`, which the workflow
+pins):
+
+| Operation | Command |
+| --------- | ------- |
+| `status` | `railway status --environment <env>` |
+| `list-variables` | `railway variable list --service <svc> --environment <env> --json`, of which only the **names** are printed |
+| `set-variable` | `railway variable set <KEY> --stdin --service <svc> --environment <env>` |
+| `redeploy` | `railway redeploy --service <svc> --environment <env> --yes` |
+
+### The production confirmation
+
+Anything that can change an environment — `set-variable` and `redeploy` — refuses to run against
+`production` unless the `confirm` input is typed as exactly `production`. A mis-selected dropdown
+therefore cannot quietly change production: the run fails validation before the Railway CLI is even
+installed. The read-only operations (`status`, `list-variables`) need no confirmation, and
+`staging` needs none either.
+
+### What the workflow will not print
+
+- The `value` input is passed to the CLI **on stdin** (`--stdin`), so it never appears in a command
+  line, a shell trace or an error message.
+- The value is also registered with `::add-mask::`, but that is defence in depth, not the control:
+  the workflow simply never prints it. `set-variable` confirms `Set <KEY> on <service> in <env>`
+  and nothing more. The CLI's own output is shown only when it does not contain the value.
+- `list-variables` prints names only. `--json` and `--kv` both emit raw values, so the CLI output
+  goes to a file under `RUNNER_TEMP` that is deleted at the end of the step and never displayed;
+  the names are read out of it with `jq`. If the names cannot be parsed, the step fails rather than
+  dumping the file.
+- The job declares `permissions: {}` — it needs no `GITHUB_TOKEN` scope at all — and does not check
+  the repository out. The Railway token is set only on the steps that call the CLI, so an `npm`
+  install script cannot see it.
+- Dispatch inputs are passed to the scripts as environment variables and never interpolated into a
+  shell command, so a crafted `key`/`value` cannot inject one.
+
+**The `value` box is not a secret channel.** GitHub records dispatch inputs with the workflow run
+and does not treat them as secrets. Use it for ordinary configuration; set genuinely sensitive
+values (database URLs, API keys) in the Railway dashboard, or add them as repository secrets and
+reference them from the workflow.
+
+### Limits worth knowing
+
+- A Railway **project token** — which is what the CLI reads `RAILWAY_TOKEN` as — is scoped to a
+  single environment in a single project. The `environment` dropdown cannot escape that scope: if
+  the secret holds a `staging` token, `environment: production` will fail at the API, which is a
+  useful safety property but also means covering both environments needs a token per environment
+  (or a workspace token in `RAILWAY_API_TOKEN`, which the workflow does not currently read).
+- Setting a variable triggers a redeployment of that service; the workflow does not pass
+  `--skip-deploys`. Use `redeploy` afterwards only if you skipped it deliberately.
+- Service names are case-sensitive and must match the Railway project exactly (`api`, `web`,
+  `postgres`, `redis`, `backup`).
+- The CLI version is pinned in the workflow's `RAILWAY_CLI_VERSION`. Bump it deliberately and
+  re-check the flags above, which come from `railway <command> --help` at that version.
+- To require a second pair of eyes, create a GitHub Environment named `production` with required
+  reviewers and add `environment: ${{ inputs.environment }}` to the job.
+
 ## Monitoring
 
 - **Health checks** — Railway polls `/health/ready` on `api` and `/` on `web`; a deployment that
