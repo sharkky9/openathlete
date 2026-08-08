@@ -45,11 +45,6 @@ import {
   toDayAnchor,
 } from 'src/common/utils/day-anchor';
 import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
-// Imported from the file rather than the `src/modules/auth` barrel: the barrel
-// re-exports the auth controllers, which pull in the subscription module, which
-// imports back into auth. Nest tolerates the cycle at runtime, but loading this
-// service on its own (as a unit test does) evaluates the decorators mid-cycle
-// and fails with "JwtUser is not a function".
 import { CaslAbilityFactory } from 'src/modules/auth/services/casl-ability.factory';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 

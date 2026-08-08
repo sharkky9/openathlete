@@ -7,7 +7,6 @@ import {
 } from '@/api/athlete';
 import { ConfirmAction } from '@/components/confirm-action';
 import { InviteAthleteDialog } from '@/components/invite-athlete-dialog/invite-athlete.dialog';
-import { PaywallDialog } from '@/components/paywall';
 import { Button } from '@/components/ui/button';
 import { SkeletonTableRow } from '@/components/ui/skeleton';
 import {
@@ -18,12 +17,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useAthleteLimit } from '@/hooks/use-feature-access';
 import { m } from '@/paraglide/messages';
 import { getLocale } from '@/paraglide/runtime';
 import { getPath } from '@/routes/paths';
 import { getDateLocale } from '@/utils/locales';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -39,14 +37,6 @@ export function AthletesTab() {
     null,
   );
   const [inviteAthleteDialog, setInviteAthleteDialog] = useState(false);
-  const [paywallOpen, setPaywallOpen] = useState(false);
-
-  const { maxAthletes } = useAthleteLimit();
-  const currentAthleteCount = athletes?.length || 0;
-  const canAddAthlete = useMemo(() => {
-    if (maxAthletes === null) return true; // Unlimited
-    return currentAthleteCount < maxAthletes;
-  }, [maxAthletes, currentAthleteCount]);
   const removeAthleteMutation = useRemoveAthleteMutation();
   const inviteAthleteMutation = useInviteAthleteMutation({
     onSuccess: () => {
@@ -75,16 +65,7 @@ export function AthletesTab() {
         title={m.athletes()}
         description={m.athletes_tab_description()}
         action={
-          <Button
-            size="sm"
-            onClick={() => {
-              if (canAddAthlete) {
-                setInviteAthleteDialog(true);
-              } else {
-                setPaywallOpen(true);
-              }
-            }}
-          >
+          <Button size="sm" onClick={() => setInviteAthleteDialog(true)}>
             {m.invite_athlete()}
           </Button>
         }
@@ -215,12 +196,6 @@ export function AthletesTab() {
         title={m.delete_athlete()}
         message={m.confirm_delete_athlete()}
         isLoading={removeAthleteMutation.isPending}
-      />
-      <PaywallDialog
-        open={paywallOpen}
-        onOpenChange={setPaywallOpen}
-        reason="athlete-limit"
-        analyticsSource="settings_athletes_tab"
       />
     </div>
   );

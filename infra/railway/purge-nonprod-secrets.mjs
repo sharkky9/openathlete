@@ -34,7 +34,7 @@
  *      resolution, if any target is a production environment. There is no flag,
  *      env var or workflow input that disables this.
  *   2. PROTECTED_VARIABLE_PREFIXES + PURGE_ALLOWLIST — a variable is deleted
- *      only when it is on the seven-name allow-list AND does not match the
+ *      only when it is on the five-name allow-list AND does not match the
  *      deny-list. `INTERVALS_ICU*` belongs to another workstream and is never
  *      touched.
  *
@@ -69,8 +69,6 @@ const RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
  */
 const PURGE_ALLOWLIST = Object.freeze([
   'BREVO_API_KEY',
-  'OPENAI_API_KEY',
-  'GOOGLE_GENERATIVE_AI_API_KEY',
   'STRAVA_CLIENT_SECRET',
   'STRAVA_WEBHOOK_TOKEN',
   'POLAR_CLIENT_SECRET',
@@ -711,7 +709,7 @@ async function main() {
 
   log('');
   if (survivors.length === 0 && failures.length === 0) {
-    log('VERDICT: PASS - none of the seven production credentials remain in any target environment.');
+    log('VERDICT: PASS - none of the five production credentials remain in any target environment.');
     return 0;
   }
   log('VERDICT: FAIL - production credentials remain in a non-production environment, or a call failed.');

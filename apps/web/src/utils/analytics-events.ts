@@ -3,12 +3,11 @@
  * Do not send PII, free-text prompts, or raw error messages — use codes only.
  *
  * Manual verification: PostHog → Live events while walking through:
- * onboarding, OAuth connect, calendar CRUD, AI dialogs, subscription, messages.
+ * onboarding, OAuth connect, calendar CRUD, and messages.
  *
  * Suggested dashboards / funnels:
  * - Activation: user_signed_up → onboarding_step_completed → provider_connect_completed → event_created
  * - Retention (weekly): event_created, event_updated, messages_message_sent, provider_sync_preference_changed
- * - Monetization: ai_paywall_viewed → subscription_upgrade_initiated
  */
 
 export const AnalyticsEvent = {
@@ -21,12 +20,6 @@ export const AnalyticsEvent = {
   event_deleted: 'event_deleted',
   event_duplicated: 'event_duplicated',
   event_template_saved: 'event_template_saved',
-  ai_event_generation_opened: 'ai_event_generation_opened',
-  ai_event_generation_succeeded: 'ai_event_generation_succeeded',
-  ai_event_generation_failed: 'ai_event_generation_failed',
-  ai_paywall_viewed: 'ai_paywall_viewed',
-  subscription_manage_billing_opened: 'subscription_manage_billing_opened',
-  subscription_checkout_failed: 'subscription_checkout_failed',
   messages_thread_created: 'messages_thread_created',
   messages_thread_deleted: 'messages_thread_deleted',
   messages_message_sent: 'messages_message_sent',

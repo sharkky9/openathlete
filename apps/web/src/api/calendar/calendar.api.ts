@@ -3,23 +3,6 @@ import { getAccessToken, isTokenExpiringSoon } from '@/utils/auth';
 import { ACCESS_TOKEN, getItem, setItem } from '@/utils/local-storage';
 import { Socket, io } from 'socket.io-client';
 
-export interface TrainingLoadEstimationStartedPayload {
-  eventId: number;
-  athleteId: number;
-}
-
-export interface TrainingLoadEstimationCompletedPayload {
-  eventId: number;
-  athleteId: number;
-  estimatedLoad: number;
-}
-
-export interface TrainingLoadEstimationFailedPayload {
-  eventId: number;
-  athleteId: number;
-  error: string;
-}
-
 export interface ActivityProcessedPayload {
   eventId: number;
   athleteId: number;
@@ -32,18 +15,6 @@ export interface WeeklyLoadUpdatedPayload {
 }
 
 export type CalendarWebSocketEvent =
-  | {
-      type: 'training_load_estimation_started';
-      payload: TrainingLoadEstimationStartedPayload;
-    }
-  | {
-      type: 'training_load_estimation_completed';
-      payload: TrainingLoadEstimationCompletedPayload;
-    }
-  | {
-      type: 'training_load_estimation_failed';
-      payload: TrainingLoadEstimationFailedPayload;
-    }
   | { type: 'activity_processed'; payload: ActivityProcessedPayload }
   | { type: 'weekly_load_updated'; payload: WeeklyLoadUpdatedPayload };
 
@@ -281,21 +252,6 @@ export class CalendarAPI {
     const socket = this.getSocket();
 
     const handlers = {
-      training_load_estimation_started: (
-        payload: TrainingLoadEstimationStartedPayload,
-      ) => {
-        callback({ type: 'training_load_estimation_started', payload });
-      },
-      training_load_estimation_completed: (
-        payload: TrainingLoadEstimationCompletedPayload,
-      ) => {
-        callback({ type: 'training_load_estimation_completed', payload });
-      },
-      training_load_estimation_failed: (
-        payload: TrainingLoadEstimationFailedPayload,
-      ) => {
-        callback({ type: 'training_load_estimation_failed', payload });
-      },
       activity_processed: (payload: ActivityProcessedPayload) => {
         callback({ type: 'activity_processed', payload });
       },

@@ -185,21 +185,12 @@ function PlannedDoneSummary({
 }
 
 export function CalendarWeekSummary({ events, week }: P) {
-  const {
-    summaryType,
-    weeklyLoadSummary,
-    weeklyLoadSummaryLoading,
-    estimatingEvents,
-  } = useCalendarContext();
+  const { summaryType, weeklyLoadSummary, weeklyLoadSummaryLoading } =
+    useCalendarContext();
   const weekKey = getWeekKey(week[0]);
   const weekLoad = weeklyLoadSummary[weekKey];
 
-  // Check if any event in this week is being estimated
-  const hasEstimatingEvent = events.some(
-    (event) =>
-      event.type === EVENT_TYPE.TRAINING && estimatingEvents.has(event.eventId),
-  );
-  const isLoadLoading = weeklyLoadSummaryLoading || hasEstimatingEvent;
+  const isLoadLoading = weeklyLoadSummaryLoading;
 
   if (summaryType === 'done') {
     return (

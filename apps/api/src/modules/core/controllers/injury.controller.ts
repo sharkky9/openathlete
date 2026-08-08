@@ -33,7 +33,7 @@ export class InjuryController {
   @ApiOperation({
     summary: 'Get all injuries for an athlete',
     description:
-      "Retrieves all injury entries for an athlete. Injuries are ordered by most recently updated first. Injuries are typically extracted automatically from activity feedback using AI, but can also be manually created. Each injury includes location (body part), pain score (0.0 to 1.0), context description, status (WORSENING, IMPROVING, STABLE, RESOLVED), and optionally the source activity ID if extracted from feedback. If no athleteId is provided, uses the authenticated user's athlete. Uses CASL authorization to verify that the user has read access to the athlete.",
+      "Retrieves all manually recorded injury entries for an athlete, ordered by most recently updated first. Each injury includes location (body part), pain score (0.0 to 1.0), context description, status (WORSENING, IMPROVING, STABLE, RESOLVED), and optionally a source activity ID. If no athleteId is provided, uses the authenticated user's athlete. Uses CASL authorization to verify that the user has read access to the athlete.",
   })
   @ApiQuery({
     name: 'athleteId',

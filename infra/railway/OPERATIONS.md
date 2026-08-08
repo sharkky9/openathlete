@@ -41,8 +41,8 @@ The API validates its whole environment at boot (`libs/shared/src/types/config/e
 Only five variables are genuinely required: `ENV`, `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET_KEY`
 (at least 32 characters) and `HASH_PEPPER`. `PORT` defaults to `3000`.
 
-Every third-party credential (Strava, Polar, Garmin, Suunto, Brevo, OpenAI, Google Generative AI,
-Stripe, Firebase, Better Stack…) is **optional**, as of PR #44. Leave one out and the API still
+Every third-party credential (Strava, Polar, Garmin, Suunto, Brevo, Firebase, Better Stack…) is
+**optional**, as of PR #44. Leave one out and the API still
 boots; the feature it powers stays dark and reports a clear error at request time. Placeholder
 values are not needed and should not be used — an unset credential is the supported state. Values
 that _are_ supplied are still format-checked, so a typo in a URL or an email is still caught at boot.
@@ -202,10 +202,10 @@ environment without them boots fine and simply keeps those features dark.
 The `Railway purge non-production secrets` workflow
 (`.github/workflows/railway-purge-nonprod-secrets.yml`) enforces and verifies this. It runs
 `infra/railway/purge-nonprod-secrets.mjs`, a dependency-free Node script that talks to Railway's
-public GraphQL API (`https://backboard.railway.com/graphql/v2`) and deletes exactly seven variables:
+public GraphQL API (`https://backboard.railway.com/graphql/v2`) and deletes exactly five variables:
 
-`BREVO_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `STRAVA_CLIENT_SECRET`,
-`STRAVA_WEBHOOK_TOKEN`, `POLAR_CLIENT_SECRET`, `POLAR_WEBHOOK_SECRET_KEY`.
+`BREVO_API_KEY`, `STRAVA_CLIENT_SECRET`, `STRAVA_WEBHOOK_TOKEN`, `POLAR_CLIENT_SECRET`,
+`POLAR_WEBHOOK_SECRET_KEY`.
 
 These are _deleted_, not rotated: staging held byte-identical copies of the production values, and a
 copy of a live secret cannot be rotated in place.
@@ -228,8 +228,8 @@ Two guards are compiled into the script and **cannot be turned off from the work
    any case, with any surrounding whitespace) aborts the entire run before anything is deleted. The
    check runs twice — once on the requested names, before the script even authenticates, and again
    on the names Railway itself returns, so a rename or an alias cannot slip past it.
-2. **Only those seven names, and never `INTERVALS_ICU*`.** Deletion requires an exact match against
-   the seven-name allow-list _and_ a miss against an `INTERVALS_ICU` prefix deny-list (that
+2. **Only those five names, and never `INTERVALS_ICU*`.** Deletion requires an exact match against
+   the five-name allow-list _and_ a miss against an `INTERVALS_ICU` prefix deny-list (that
    credential belongs to another workstream). The two checks are independent, and both are
    re-asserted immediately before each delete call.
 
@@ -237,7 +237,7 @@ The script never prints a variable **value** — only names — because the job 
 share and the repo's `Secret scan` check treats these as live credentials. It is idempotent:
 deleting an already-absent variable is a logged no-op, so re-running it is harmless. After the purge
 it re-queries Railway and prints the full variable-name listing per environment plus a `PASS`/`FAIL`
-verdict, exiting non-zero if any of the seven survived.
+verdict, exiting non-zero if any of the five survived.
 
 It needs a `RAILWAY_TOKEN` repository secret — an account, workspace or project token with access to
 this project. The script accepts either header shape (`Authorization: Bearer` for account/workspace

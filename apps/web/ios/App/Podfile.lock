@@ -17,8 +17,6 @@ PODS:
     - Capacitor
   - CapacitorStatusBar (7.0.4):
     - Capacitor
-  - CapacitorVoiceRecorder (1.2.0):
-    - Capacitor
   - Firebase/Core (11.7.0):
     - Firebase/CoreOnly
     - FirebaseAnalytics (~> 11.7.0)
@@ -145,7 +143,6 @@ DEPENDENCIES:
   - "CapacitorFirebaseAuthentication (from `../../../../node_modules/.pnpm/@capacitor-firebase+authentication@7.4.0_@capacitor+core@7.4.4_firebase@11.10.0/node_modules/@capacitor-firebase/authentication`)"
   - "CapacitorPushNotifications (from `../../../../node_modules/.pnpm/@capacitor+push-notifications@7.0.4_@capacitor+core@7.4.4/node_modules/@capacitor/push-notifications`)"
   - "CapacitorStatusBar (from `../../../../node_modules/.pnpm/@capacitor+status-bar@7.0.4_@capacitor+core@7.4.4/node_modules/@capacitor/status-bar`)"
-  - "CapacitorVoiceRecorder (from `../../../../node_modules/.pnpm/capacitor-voice-recorder@1.2.0_@capacitor+core@7.4.4/node_modules/capacitor-voice-recorder`)"
   - Firebase/Core (~> 11.7.0)
   - Firebase/Messaging (~> 11.7.0)
 
@@ -184,8 +181,6 @@ EXTERNAL SOURCES:
     :path: "../../../../node_modules/.pnpm/@capacitor+push-notifications@7.0.4_@capacitor+core@7.4.4/node_modules/@capacitor/push-notifications"
   CapacitorStatusBar:
     :path: "../../../../node_modules/.pnpm/@capacitor+status-bar@7.0.4_@capacitor+core@7.4.4/node_modules/@capacitor/status-bar"
-  CapacitorVoiceRecorder:
-    :path: "../../../../node_modules/.pnpm/capacitor-voice-recorder@1.2.0_@capacitor+core@7.4.4/node_modules/capacitor-voice-recorder"
 
 SPEC CHECKSUMS:
   Capacitor: 358dd1c3fdd71d969547b17e159fd8a7736cb45f
@@ -195,7 +190,6 @@ SPEC CHECKSUMS:
   CapacitorFirebaseAuthentication: 2297f469e0f7a51a19446d28c452179675dfc330
   CapacitorPushNotifications: 7604512af53bbfdf1dd8fb2256b9ef1e8a69cdc2
   CapacitorStatusBar: d0e0151c89c001a9c7125bac59ddedf76b664768
-  CapacitorVoiceRecorder: 03d4cbd2dc50bc222777171633b6abbc4355940f
   Firebase: a64bf6a8546e6eab54f1c715cd6151f39d2329f4
   FirebaseAnalytics: bc9e565af9044ba8d6c6e4157e4edca8e5fdf7ec
   FirebaseAppCheckInterop: 06fe5a3799278ae4667e6c432edd86b1030fa3df

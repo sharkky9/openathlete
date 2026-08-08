@@ -12,10 +12,8 @@ import { ProvidersSyncModule } from '../providers-sync/providers-sync.module';
 import { ActivityImportProcessor } from './processors/activity-import.processor';
 import { ActivityProcessingProcessor } from './processors/activity-processing.processor';
 import { FullImportCompletionProcessor } from './processors/full-import-completion.processor';
-import { TrainingLoadEstimationProcessor } from './processors/training-load-estimation.processor';
 import { QueueService } from './queue.service';
 import { FullImportCompletionService } from './services/full-import-completion.service';
-import { TrainingLoadEstimationService } from './services/training-load-estimation.service';
 
 function parseRedisUrl(redisUrl: string): {
   host: string;
@@ -269,29 +267,11 @@ function parseRedisUrl(redisUrl: string): {
         },
       },
     }),
-    BullModule.registerQueue({
-      name: 'training-load-estimation',
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-        removeOnComplete: {
-          age: 24 * 3600,
-          count: 1000,
-        },
-        removeOnFail: {
-          age: 7 * 24 * 3600,
-        },
-      },
-    }),
   ],
   providers: [
     PrismaService,
     QueueService,
     FullImportCompletionService,
-    TrainingLoadEstimationService,
     // Note: We use process.env here because ConfigService is not available
     // at module definition time. The value is validated by envValidationSchema.
     ...(process.env.ENABLE_ACTIVITY_IMPORT === 'true'
@@ -304,14 +284,7 @@ function parseRedisUrl(redisUrl: string): {
     process.env.ENABLE_ACTIVITY_PROCESSING === 'true'
       ? [FullImportCompletionProcessor]
       : []),
-    ...(process.env.ENABLE_TRAINING_LOAD_ESTIMATION === 'true'
-      ? [TrainingLoadEstimationProcessor]
-      : []),
   ],
-  exports: [
-    QueueService,
-    FullImportCompletionService,
-    TrainingLoadEstimationService,
-  ],
+  exports: [QueueService, FullImportCompletionService],
 })
 export class QueueModule {}

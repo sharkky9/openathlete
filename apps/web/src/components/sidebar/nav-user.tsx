@@ -1,8 +1,6 @@
 'use client';
 
-import { useCurrentSubscription } from '@/api/subscription';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,20 +30,8 @@ import { ChevronsUpDown, CogIcon, LogOut } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useNavigate } from 'react-router-dom';
 
-import { SubscriptionPlan } from '@openathlete/shared';
-
-const planNameMap: Record<SubscriptionPlan, string> = {
-  [SubscriptionPlan.FREE]: m.plan_free_name(),
-  [SubscriptionPlan.ATHLETE_PRO]: m.plan_athlete_pro_name(),
-  [SubscriptionPlan.COACH_PRO]: m.plan_coach_pro_name(),
-  [SubscriptionPlan.COACH_ULTRA]: m.plan_coach_ultra_name(),
-  [SubscriptionPlan.CLUB_PRO]: m.plan_club_pro_name(),
-  [SubscriptionPlan.CLUB_ULTRA]: m.plan_club_ultra_name(),
-};
-
 export function NavUser() {
   const { logout, user } = useAuthContext();
-  const { data: subscription } = useCurrentSubscription();
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const { theme, setTheme } = useTheme();
@@ -64,8 +50,6 @@ export function NavUser() {
   }
 
   const fullName = `${user.firstName || ''} ${user.lastName || ''}`;
-  const currentPlan = subscription?.plan as SubscriptionPlan | undefined;
-  const planName = currentPlan ? planNameMap[currentPlan] : null;
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -103,14 +87,7 @@ export function NavUser() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate font-medium">{fullName}</span>
-                    {planName && (
-                      <Badge variant="secondary" className="text-xs">
-                        {planName}
-                      </Badge>
-                    )}
-                  </div>
+                  <span className="truncate font-medium">{fullName}</span>
                   <span className="truncate text-xs">{user.email}</span>
                 </div>
               </div>

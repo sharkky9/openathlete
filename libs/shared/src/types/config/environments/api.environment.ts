@@ -216,49 +216,6 @@ export const ApiEnvSchema = z
       z.string().email('BREVO_FROM_EMAIL must be a valid email address'),
     ).describe('Default sender email address for Brevo emails (optional)'),
 
-    // AI Services — optional; AI endpoints fail at request time when unset
-    OPENAI_API_KEY: optional(z.string()).describe(
-      'OpenAI API key for AI-powered features (optional)',
-    ),
-
-    GOOGLE_GENERATIVE_AI_API_KEY: optional(z.string()).describe(
-      'Google Generative AI API key (optional)',
-    ),
-
-    // AI Model Configuration (optional, uses defaults if not provided)
-    AI_MODEL_EVENT_GENERATION: z
-      .string()
-      .optional()
-      .describe('AI model for event generation agent (e.g., gpt-4o, gpt-5.1)'),
-    AI_MODEL_EVENT_MODIFICATION: z
-      .string()
-      .optional()
-      .describe(
-        'AI model for event modification agent (e.g., gpt-4o, gpt-5.1)',
-      ),
-    AI_MODEL_EXTRACT_INJURY: z
-      .string()
-      .optional()
-      .describe('AI model for injury extraction agent (e.g., gpt-4o, gpt-5.1)'),
-    AI_MODEL_EXTRACT_RPE: z
-      .string()
-      .optional()
-      .describe('AI model for RPE extraction agent (e.g., gpt-4o, gpt-5.1)'),
-    AI_MODEL_POST_ACTIVITY_FEEDBACK: z
-      .string()
-      .optional()
-      .describe(
-        'AI model for post-activity feedback agent (e.g., google/gemini-2.0-flash-exp, google/gemini-3-pro-preview)',
-      ),
-    AI_MODEL_QNA: z
-      .string()
-      .optional()
-      .describe('AI model for QnA agent (e.g., gpt-4o)'),
-    AI_MODEL_TRIMP_ESTIMATION: z
-      .string()
-      .optional()
-      .describe('AI model for TRIMP estimation agent (e.g., gpt-4o, gpt-5.1)'),
-
     // Redis
     REDIS_URL: z
       .string()
@@ -266,26 +223,6 @@ export const ApiEnvSchema = z
       .optional()
       .default('redis://localhost:6379/0')
       .describe('Redis connection URL for queue and caching'),
-
-    // Stripe (optional, required for subscription features)
-    STRIPE_SECRET_KEY: z
-      .string()
-      .optional()
-      .describe('Stripe secret key for payment processing (optional)'),
-
-    STRIPE_PRICE_IDS: z
-      .string()
-      .optional()
-      .describe(
-        'JSON string of Stripe price IDs mapped to subscription plans (optional)',
-      ),
-
-    STRIPE_WEBHOOK_SECRET: z
-      .string()
-      .optional()
-      .describe(
-        'Stripe webhook secret for verifying webhook requests (optional)',
-      ),
 
     // Firebase
     FIREBASE_FUNCTIONS_URL: optional(
@@ -313,13 +250,6 @@ export const ApiEnvSchema = z
       .default('false')
       .transform((val) => val === 'true')
       .describe('Enable activity processing queue'),
-
-    ENABLE_TRAINING_LOAD_ESTIMATION: z
-      .string()
-      .optional()
-      .default('false')
-      .transform((val) => val === 'true')
-      .describe('Enable training load estimation processing'),
 
     // Monitoring & Error Tracking
     BETTER_STACK_DSN: optional(

@@ -259,7 +259,7 @@ export class AthleteController {
   @ApiOperation({
     summary: 'Invite an athlete to be coached by the current user',
     description:
-      "Sends an invitation to an athlete to be coached by the authenticated user (coach). If the athlete already has an account, they receive an email with a link to accept the invitation. If they don't have an account, they receive an email with a link to create an account using the invitation token. The invitation is valid for 7 days. Cannot invite yourself or someone already linked as your athlete. Checks subscription limits before sending.",
+      "Sends an invitation to an athlete to be coached by the authenticated user (coach). If the athlete already has an account, they receive an email with a link to accept the invitation. If they don't have an account, they receive an email with a link to create an account using the invitation token. The invitation is valid for 7 days. Cannot invite yourself or someone already linked as your athlete.",
   })
   @ApiBody({
     description: 'Athlete invitation data',
@@ -711,7 +711,7 @@ export class AthleteController {
   @ApiOperation({
     summary: 'Accept a pending athlete invitation',
     description:
-      "Accepts a pending athlete invitation from a coach. Creates the coach-athlete relationship and updates the invitation status to ACCEPTED. Verifies that the invitation is for the authenticated user's email and checks subscription limits before accepting.",
+      "Accepts a pending athlete invitation from a coach. Creates the coach-athlete relationship and updates the invitation status to ACCEPTED. Verifies that the invitation is for the authenticated user's email.",
   })
   @ApiParam({
     name: 'invitationId',

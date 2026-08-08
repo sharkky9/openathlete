@@ -8,7 +8,6 @@ import { useWeeklyLoadSummaryQuery } from '@/api/training-load';
 import { trainingLoadKeys } from '@/api/training-load/training-load.keys';
 import { useCalendarData } from '@/components/calendar/hooks/use-calendar-data';
 import { Loader } from '@/components/ui/loader';
-import { useFeatureAccess } from '@/hooks/use-feature-access';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { type PageAction, useSetPageActions } from '@/hooks/use-page-actions';
 import { m } from '@/paraglide/messages';
@@ -17,7 +16,7 @@ import { CALENDAR_COLORED_BY, getItem, setItem } from '@/utils/local-storage';
 import { DragEndEvent } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { addDays, startOfMonth } from 'date-fns';
-import { Activity, Award, Plus, Sparkles } from 'lucide-react';
+import { Activity, Award, Plus } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -29,10 +28,8 @@ import {
   EVENT_TYPE,
   Event,
   EventTemplate,
-  FeatureName,
 } from '@openathlete/shared';
 
-import { AIGenerateEventDialog } from '../ai-generate-event-dialog/ai-generate-event.dialog';
 import { CreateCycleDialog } from '../create-cycle-dialog';
 import { CreateEventDialog } from '../create-event-dialog';
 import { CreateEventFromTemplateDialog } from '../create-event-from-template-dialog/create-event-from-template.dialog';
@@ -69,9 +66,6 @@ export function Calendar({
   const isMobile = useIsMobile();
   const calendarData = useCalendarData({ events });
   const { data: cycles } = useGetMyCyclesQuery(undefined, athleteId);
-  const { hasAccess: hasAIAccess } = useFeatureAccess(
-    FeatureName.AI_GENERATION,
-  );
   const weekRangeStart = calendarData.displayedWeeks[0]?.[0];
   const weekRangeEnd =
     calendarData.displayedWeeks[calendarData.displayedWeeks.length - 1]?.[6];
@@ -98,11 +92,6 @@ export function Calendar({
     loadRange.end,
     athleteId,
     Boolean(loadRange.start && loadRange.end),
-  );
-
-  // Track events with ongoing load estimations
-  const [estimatingEvents, setEstimatingEvents] = useState<Set<number>>(
-    new Set(),
   );
 
   const weeklyLoadSummaryMap = useMemo(() => {
@@ -208,35 +197,6 @@ export function Calendar({
     // Set up event listeners
     const cleanup = CalendarAPI.onEvent((event) => {
       switch (event.type) {
-        case 'training_load_estimation_started': {
-          setEstimatingEvents((prev) => {
-            const next = new Set(prev);
-            next.add(event.payload.eventId);
-            return next;
-          });
-          break;
-        }
-        case 'training_load_estimation_completed': {
-          setEstimatingEvents((prev) => {
-            const next = new Set(prev);
-            next.delete(event.payload.eventId);
-            return next;
-          });
-          // Invalidate and refetch weekly load summary
-          queryClient.invalidateQueries({
-            queryKey: [trainingLoadKeys.getWeeklyLoadSummary],
-          });
-          refetchWeeklyLoadSummary();
-          break;
-        }
-        case 'training_load_estimation_failed': {
-          setEstimatingEvents((prev) => {
-            const next = new Set(prev);
-            next.delete(event.payload.eventId);
-            return next;
-          });
-          break;
-        }
         case 'activity_processed': {
           // Invalidate events query to refresh the calendar
           queryClient.invalidateQueries({
@@ -286,8 +246,6 @@ export function Calendar({
     prefilledData?: CreateEventDto;
   } | null>(null);
   const [createEventFromTemplateDialog, setCreateEventFromTemplateDialog] =
-    useState<Date | null>(null);
-  const [aiGenerateEventDialog, setAIGenerateEventDialog] =
     useState<Date | null>(null);
   const [editEventDialog, setEditEventDialog] = useState<
     Event['eventId'] | null
@@ -396,7 +354,6 @@ export function Calendar({
         setCreateEventDialog({ date, type });
       },
       createEventFromTemplate: setCreateEventFromTemplateDialog,
-      createEventWithAI: setAIGenerateEventDialog,
       openEventDetails: setEventDetailsOpened,
       eventDetailsOpened,
       editEvent: (eventId) => setEditEventDialog(eventId),
@@ -420,7 +377,6 @@ export function Calendar({
       setColoredBy,
       weeklyLoadSummary: weeklyLoadSummaryMap,
       weeklyLoadSummaryLoading,
-      estimatingEvents,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -437,7 +393,6 @@ export function Calendar({
       athleteId,
       weeklyLoadSummaryMap,
       weeklyLoadSummaryLoading,
-      estimatingEvents,
     ],
   );
 
@@ -553,18 +508,8 @@ export function Calendar({
       },
     ];
 
-    if (hasAIAccess) {
-      actions.splice(1, 0, {
-        label: m.create_with_ai(),
-        icon: Sparkles,
-        onClick: () => {
-          setAIGenerateEventDialog(today);
-        },
-      });
-    }
-
     return actions;
-  }, [isMobile, allowCreate, hasAIAccess]);
+  }, [isMobile, allowCreate]);
 
   useSetPageActions(isMobile && allowCreate ? mobileActions : []);
 
@@ -661,21 +606,6 @@ export function Calendar({
               date={createEventDialog?.date}
               type={createEventDialog?.type}
               prefilledData={createEventDialog?.prefilledData}
-            />
-            <AIGenerateEventDialog
-              open={aiGenerateEventDialog !== null}
-              onClose={() => {
-                setAIGenerateEventDialog(null);
-              }}
-              date={aiGenerateEventDialog || new Date()}
-              onEventGenerated={(event) => {
-                setAIGenerateEventDialog(null);
-                setCreateEventDialog({
-                  date: event.startDate,
-                  type: event.type,
-                  prefilledData: event,
-                });
-              }}
             />
             <CreateEventDialog
               key={editEventDialog}

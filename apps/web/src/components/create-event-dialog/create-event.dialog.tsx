@@ -1,31 +1,19 @@
-import { SparklesIcon } from '@/components/ui/sparkles-icon';
-import { useFeatureAccess } from '@/hooks/use-feature-access';
 import { m } from '@/paraglide/messages';
 import { eventTypeLabelMap } from '@/utils/label-map/core';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 
-import { FeatureName } from '@openathlete/shared';
-import type {
-  CreateEventDto,
-  CreateWorkoutStepDto,
-  Event,
-  SPORT_TYPE,
-  UpdateEventDto,
-} from '@openathlete/shared';
+import type { CreateEventDto, Event } from '@openathlete/shared';
 import { EVENT_TYPE } from '@openathlete/shared';
 
 import { useCalendarContext } from '../calendar/hooks/use-calendar-context';
 import { FormProvider } from '../hook-form';
 import { RHFCheckbox } from '../hook-form/rhf-checkbox';
-import { PaywallDialog } from '../paywall';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { AIModifyEventDialog } from './components/ai-modify-event-dialog';
 import { EventFormFields } from './components/event-form-fields';
 import { WorkoutSection } from './components/workout-section';
-import { useCurrentEventData } from './hooks/use-current-event-data';
 import { useEventFormSubmission } from './hooks/use-event-form-submission';
 import { useWorkoutDuration } from './hooks/use-workout-duration';
 import { useWorkoutSteps } from './hooks/use-workout-steps';
@@ -99,14 +87,6 @@ export function CreateEventDialog({ open, onClose, ...rest }: P) {
     setValue,
   );
 
-  // Get current event data for AI modification
-  const { currentEventData } = useCurrentEventData(
-    rest,
-    watch,
-    workoutSteps,
-    athleteId ?? 0,
-  );
-
   // Handle form submission
   const { onSubmit, isSubmitting } = useEventFormSubmission(
     rest,
@@ -136,138 +116,6 @@ export function CreateEventDialog({ open, onClose, ...rest }: P) {
     }
   }, [startDateValue, goalDurationValue, hasStepsWithDuration, type, setValue]);
 
-  // AI modification/generation dialog state
-  const [aiDialogOpen, setAiDialogOpen] = useState(false);
-  const [paywallOpen, setPaywallOpen] = useState(false);
-
-  // Check AI feature access
-  const { hasAccess: hasAIAccess } = useFeatureAccess(
-    FeatureName.AI_GENERATION,
-  );
-
-  // Determine if we're in create mode (empty form)
-  const formName = watch('name');
-  const isCreateMode = !formName || formName.trim() === '';
-
-  // Handle event generation (for create mode)
-  const handleEventGenerated = (generatedEvent: CreateEventDto) => {
-    // Update form with generated event data
-    if (generatedEvent.name) setValue('name', generatedEvent.name);
-    if (generatedEvent.description !== undefined)
-      setValue('description', generatedEvent.description);
-    if (generatedEvent.startDate)
-      setValue('startDate', generatedEvent.startDate);
-    if (generatedEvent.endDate) setValue('endDate', generatedEvent.endDate);
-    if (
-      generatedEvent.type === EVENT_TYPE.TRAINING &&
-      'sport' in generatedEvent &&
-      generatedEvent.sport
-    ) {
-      setValue('sport', generatedEvent.sport);
-    }
-    if (
-      generatedEvent.type === EVENT_TYPE.TRAINING &&
-      'goalDuration' in generatedEvent
-    ) {
-      setValue('goalDuration', generatedEvent.goalDuration ?? null);
-    }
-    if (
-      generatedEvent.type === EVENT_TYPE.TRAINING &&
-      'goalDistance' in generatedEvent
-    ) {
-      setValue('goalDistance', generatedEvent.goalDistance ?? null);
-    }
-    if (
-      generatedEvent.type === EVENT_TYPE.TRAINING &&
-      'goalElevationGain' in generatedEvent
-    ) {
-      setValue('goalElevationGain', generatedEvent.goalElevationGain ?? null);
-    }
-    if (
-      generatedEvent.type === EVENT_TYPE.TRAINING &&
-      'goalRpe' in generatedEvent
-    ) {
-      setValue('goalRpe', generatedEvent.goalRpe ?? null);
-    }
-    if (
-      generatedEvent.type === EVENT_TYPE.TRAINING &&
-      'workout' in generatedEvent &&
-      generatedEvent.workout &&
-      generatedEvent.workout.steps
-    ) {
-      setWorkoutSteps(generatedEvent.workout.steps);
-    } else {
-      // Allow creation even without steps
-      setWorkoutSteps([]);
-    }
-  };
-
-  // Handle event modification (for edit mode)
-  const handleEventModified = (modifiedEvent: UpdateEventDto) => {
-    const isTraining = modifiedEvent.type === EVENT_TYPE.TRAINING;
-    const trainingEventData = isTraining
-      ? (modifiedEvent as UpdateEventDto & {
-          type: EVENT_TYPE.TRAINING;
-          sport?: SPORT_TYPE;
-          goalDuration?: number | null;
-          goalDistance?: number | null;
-          goalElevationGain?: number | null;
-          goalRpe?: number | null;
-          workout?: { steps: CreateWorkoutStepDto[] } | null;
-        })
-      : null;
-    // Update form with modified event data
-    if (modifiedEvent.name) setValue('name', modifiedEvent.name);
-    if (modifiedEvent.description !== undefined)
-      setValue('description', modifiedEvent.description);
-    if (modifiedEvent.startDate) setValue('startDate', modifiedEvent.startDate);
-    if (modifiedEvent.endDate) setValue('endDate', modifiedEvent.endDate);
-    if (isTraining && trainingEventData?.sport) {
-      setValue('sport', trainingEventData.sport);
-    }
-    if (
-      isTraining &&
-      trainingEventData &&
-      'goalDuration' in trainingEventData
-    ) {
-      setValue('goalDuration', trainingEventData.goalDuration ?? null);
-    }
-    if (
-      isTraining &&
-      trainingEventData &&
-      'goalDistance' in trainingEventData
-    ) {
-      setValue('goalDistance', trainingEventData.goalDistance ?? null);
-    }
-    if (
-      isTraining &&
-      trainingEventData &&
-      'goalElevationGain' in trainingEventData
-    ) {
-      setValue(
-        'goalElevationGain',
-        trainingEventData.goalElevationGain ?? null,
-      );
-    }
-    if (isTraining && trainingEventData && 'goalRpe' in trainingEventData) {
-      setValue('goalRpe', trainingEventData.goalRpe ?? null);
-    }
-    // Always update workout steps for training events, even if empty
-    // This ensures that AI modifications (including removal of steps) are reflected
-    if (isTraining && trainingEventData) {
-      if (
-        trainingEventData.workout &&
-        trainingEventData.workout.steps &&
-        trainingEventData.workout.steps.length > 0
-      ) {
-        setWorkoutSteps(trainingEventData.workout.steps);
-      } else {
-        // Clear steps if workout is empty or doesn't exist
-        setWorkoutSteps([]);
-      }
-    }
-  };
-
   if (
     (create &&
       (!('date' in rest) || !rest.date || !('type' in rest) || !rest.type)) ||
@@ -293,28 +141,6 @@ export function CreateEventDialog({ open, onClose, ...rest }: P) {
               {edit && 'isTemplate' in rest && rest.isTemplate ? '' : m.a()}{' '}
               {eventTypeLabelMap[type as keyof typeof eventTypeLabelMap]}
             </div>
-            {type === EVENT_TYPE.TRAINING && (
-              <div className="flex items-center gap-2 md:pr-4 md:-translate-y-4 w-full md:w-auto">
-                <Button
-                  onClick={() => {
-                    if (hasAIAccess) {
-                      setAiDialogOpen(true);
-                    } else {
-                      setPaywallOpen(true);
-                    }
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 md:flex-none text-xs md:text-sm"
-                >
-                  <SparklesIcon className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
-                  <span className="hidden sm:inline">
-                    {isCreateMode ? m.create_with_ai() : m.modify_with_ai()}
-                  </span>
-                  <span className="sm:hidden">AI</span>
-                </Button>
-              </div>
-            )}
           </DialogTitle>
         </DialogHeader>
         <FormProvider
@@ -355,24 +181,6 @@ export function CreateEventDialog({ open, onClose, ...rest }: P) {
           </div>
         </FormProvider>
       </DialogContent>
-      {currentEventData && (
-        <AIModifyEventDialog
-          open={aiDialogOpen}
-          onClose={() => setAiDialogOpen(false)}
-          eventData={currentEventData}
-          date={create ? rest.date : undefined}
-          isCreateMode={isCreateMode}
-          analyticsSource="event_dialog"
-          onEventGenerated={handleEventGenerated}
-          onEventModified={handleEventModified}
-        />
-      )}
-      <PaywallDialog
-        open={paywallOpen}
-        onOpenChange={setPaywallOpen}
-        reason="ai-feature"
-        analyticsSource="event_dialog"
-      />
     </Dialog>
   );
 }

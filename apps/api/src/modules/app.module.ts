@@ -8,15 +8,12 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ApiEnvSchema } from '@openathlete/shared';
 
 import {
-  ActivityFeedbackExtractionListener,
-  ActivityFeedbackListener,
   ActivityPushNotificationListener,
   NotificationListener,
   TrainingLoadListener,
   WorkoutSyncListener,
 } from 'src/listeners';
 
-import { AgentModule } from './agent/agent.module';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth';
 import { CalendarModule } from './calendar/calendar.module';
@@ -28,7 +25,6 @@ import { PrismaService } from './prisma/services/prisma.service';
 import { ProvidersSyncModule } from './providers-sync/providers-sync.module';
 import { QueueModule } from './queue';
 import { SeoPlanModule } from './seo/seo-plan.module';
-import { SubscriptionModule } from './subscription';
 
 @Module({
   imports: [
@@ -55,7 +51,6 @@ import { SubscriptionModule } from './subscription';
     SentryModule.forRoot(),
     AuthModule,
     CoreModule,
-    AgentModule,
     MessagesModule,
     CalendarModule,
     EventEmitterModule.forRoot(),
@@ -64,7 +59,6 @@ import { SubscriptionModule } from './subscription';
     ProvidersSyncModule,
     QueueModule,
     SeoPlanModule,
-    SubscriptionModule,
   ],
   controllers: [AppController],
   providers: [
@@ -79,13 +73,8 @@ import { SubscriptionModule } from './subscription';
     // Note: We use process.env here because ConfigService is not available
     // at module definition time. The value is validated by envValidationSchema.
     ...(process.env.ENABLE_ACTIVITY_PROCESSING === 'true'
-      ? [
-          TrainingLoadListener,
-          ActivityFeedbackListener,
-          ActivityPushNotificationListener,
-        ]
+      ? [TrainingLoadListener, ActivityPushNotificationListener]
       : []),
-    ActivityFeedbackExtractionListener,
     WorkoutSyncListener,
   ],
 })
