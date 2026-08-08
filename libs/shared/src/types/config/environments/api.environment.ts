@@ -204,7 +204,7 @@ export const ApiEnvSchema = z
     ),
 
     INTERVALS_ICU_ATHLETE_ID: optional(z.string()).describe(
-      'Intervals.icu athlete ID (e.g. "i225849") paired with INTERVALS_ICU_API_KEY; resolved from the API when omitted (optional)',
+      'Intervals.icu athlete ID (e.g. "i123456") paired with INTERVALS_ICU_API_KEY; resolved from the API when omitted (optional)',
     ),
 
     // Email service (Brevo) — optional; email sending no-ops when unset
