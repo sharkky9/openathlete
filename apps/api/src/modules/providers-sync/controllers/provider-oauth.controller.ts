@@ -8,6 +8,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Logger,
   Param,
   Patch,
@@ -15,6 +16,7 @@ import {
   Req,
   Res,
   UseGuards,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
@@ -47,6 +49,7 @@ import {
   PolarWebhookPayload,
   SuuntoWebhookPayload,
 } from '../../core/types/connector';
+import { QueueService } from '../../queue/queue.service';
 import { FullImportResult } from '../base/base-provider.service';
 import { CorosProviderService, SuuntoProviderService } from '../providers';
 import { GarminProviderService } from '../providers/garmin.provider.service';
@@ -73,6 +76,8 @@ export class ProviderOAuthController {
     private readonly polarProviderService: PolarProviderService,
     private readonly intervalsIcuProviderService: IntervalsIcuProviderService,
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => QueueService))
+    private readonly queueService: QueueService,
   ) {}
 
   private async getAthleteForUser(user: AuthUser) {
@@ -340,7 +345,7 @@ export class ProviderOAuthController {
         athleteId: {
           type: 'string',
           description:
-            'Optional provider athlete ID (e.g. "i225849"). Discovered automatically when omitted.',
+            'Optional provider athlete ID (e.g. "i123456"). Discovered automatically when omitted.',
         },
       },
     },
@@ -553,7 +558,8 @@ export class ProviderOAuthController {
             format: 'date-time',
             nullable: true,
             example: '2024-01-02T00:00:00.000Z',
-            description: 'When full historical import was completed',
+            description:
+              'When the last activity of the full historical import finished importing (not when it was queued)',
           },
         },
       },
@@ -846,17 +852,32 @@ export class ProviderOAuthController {
           );
       }
 
-      await this.prisma.providerAccount.update({
-        where: {
-          providerAccountId: account.providerAccountId,
-        },
-        data: {
-          fullImportCompletedAt:
-            importResult?.backfillRequested === true ? null : new Date(),
-        },
-      });
-
       const queuedCount = importResult?.queuedActivities ?? 0;
+
+      // Queueing is not completing. Jobs queued here land over the following
+      // minutes, so stamping `fullImportCompletedAt` now reported a 1,224
+      // activity import as finished 29 minutes before its last activity
+      // actually arrived — and reported it as finished even for the two that
+      // never arrived at all. The worker stamps it when the last job settles;
+      // all that is left to decide here is the case where there was nothing to
+      // wait for in the first place.
+      const pendingJobs = await this.queueService.pendingFullImportJobs(
+        account.providerAccountId,
+      );
+
+      const alreadyComplete =
+        importResult?.backfillRequested !== true && pendingJobs === 0;
+
+      if (alreadyComplete) {
+        await this.prisma.providerAccount.update({
+          where: {
+            providerAccountId: account.providerAccountId,
+          },
+          data: {
+            fullImportCompletedAt: new Date(),
+          },
+        });
+      }
 
       return {
         success: true,
