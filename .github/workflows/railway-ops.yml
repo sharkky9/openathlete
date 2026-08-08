@@ -1,0 +1,240 @@
+name: Railway ops
+
+# Fork-owned operator tool. Runs Railway CLI operations from CI using the
+# RAILWAY_TOKEN repository secret, so nobody needs the token on their laptop.
+# Manual only — this is not a gate, and nothing here runs on push or PR.
+#
+# Documented in infra/railway/OPERATIONS.md ("Running Railway operations from CI").
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: What to do
+        type: choice
+        required: true
+        default: status
+        options:
+          - status
+          - list-variables
+          - set-variable
+          - redeploy
+      environment:
+        description: Railway environment to act on
+        type: choice
+        required: true
+        default: staging
+        options:
+          - staging
+          - production
+      service:
+        description: Railway service to act on
+        type: choice
+        required: true
+        default: api
+        options:
+          - api
+          - web
+          - backup
+          - postgres
+          - redis
+      key:
+        description: "set-variable: the variable name (A-Z, 0-9, underscore)"
+        type: string
+        required: false
+        default: ""
+      value:
+        description: "set-variable: the value. Never printed. Not a secret channel — see OPERATIONS.md"
+        type: string
+        required: false
+        default: ""
+      confirm:
+        description: "Type production to confirm a change to the production environment"
+        type: string
+        required: false
+        default: ""
+
+# This job talks to Railway, not to GitHub. It needs no GITHUB_TOKEN scopes at
+# all, and it does not check out the repository.
+permissions: {}
+
+concurrency:
+  group: railway-ops-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  railway:
+    name: ${{ inputs.operation }} on ${{ inputs.service }} (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Pinned: this is the version the flags below were verified against
+      # (`railway variable --help` on 5.33.0). Bump deliberately.
+      RAILWAY_CLI_VERSION: 5.33.0
+      # Inputs reach the scripts as environment variables and are never
+      # interpolated into a shell command, so a crafted value cannot inject one.
+      OPERATION: ${{ inputs.operation }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      SERVICE: ${{ inputs.service }}
+      INPUT_KEY: ${{ inputs.key }}
+      INPUT_VALUE: ${{ inputs.value }}
+      CONFIRM: ${{ inputs.confirm }}
+
+    steps:
+      - name: Validate the request
+        shell: bash
+        env:
+          # Presence check only — the expression yields true/false, so the token
+          # itself never enters this step's environment.
+          TOKEN_PRESENT: ${{ secrets.RAILWAY_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          # Belt and braces: mask the value in the logs as well as never
+          # printing it. Masking alone is not a control we rely on.
+          if [ -n "$INPUT_VALUE" ]; then
+            echo "::add-mask::$INPUT_VALUE"
+          fi
+
+          [ "$TOKEN_PRESENT" = "true" ] || fail "The RAILWAY_TOKEN repository secret is not set."
+
+          case "$OPERATION" in
+            set-variable)
+              [ -n "$INPUT_KEY" ] || fail "operation 'set-variable' requires the 'key' input."
+              [ -n "$INPUT_VALUE" ] || fail "operation 'set-variable' requires the 'value' input. This workflow does not clear or delete variables."
+              printf '%s' "$INPUT_KEY" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$' \
+                || fail "'key' must match ^[A-Za-z_][A-Za-z0-9_]*$."
+              ;;
+            status | list-variables | redeploy)
+              if [ -n "$INPUT_KEY" ] || [ -n "$INPUT_VALUE" ]; then
+                echo "::warning::'key' and 'value' are ignored by operation '$OPERATION'."
+              fi
+              ;;
+            *)
+              fail "Unknown operation '$OPERATION'."
+              ;;
+          esac
+
+          # Anything that can change production has to be typed out in full, so
+          # a mis-selected dropdown cannot quietly reach production.
+          case "$OPERATION" in
+            set-variable | redeploy) mutating=true ;;
+            *) mutating=false ;;
+          esac
+
+          if [ "$ENVIRONMENT" = "production" ] && [ "$mutating" = "true" ]; then
+            [ "$CONFIRM" = "production" ] \
+              || fail "'$OPERATION' against production requires the 'confirm' input to be exactly: production"
+            echo "Production change confirmed."
+          fi
+
+          echo "operation=$OPERATION environment=$ENVIRONMENT service=$SERVICE"
+
+      - name: Install the Railway CLI
+        shell: bash
+        # No Railway token in this step's environment: nothing an npm install
+        # script does can reach it.
+        run: |
+          set -euo pipefail
+          npm install -g "@railway/cli@${RAILWAY_CLI_VERSION}"
+          railway --version
+
+      - name: Show project status
+        if: inputs.operation == 'status'
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway status --environment "$ENVIRONMENT"
+
+      - name: List variable names
+        if: inputs.operation == 'list-variables'
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # --json and --kv both print raw values, so the output goes to a file
+          # that is never displayed; only the keys are read back out of it.
+          umask 077
+          raw="$RUNNER_TEMP/railway-variables.json"
+          trap 'rm -f "$raw"' EXIT
+
+          railway variable list --service "$SERVICE" --environment "$ENVIRONMENT" --json > "$raw"
+
+          total=$(jq -r 'length' "$raw")
+          keys=$(jq -r '
+            if type == "object" then keys_unsorted[]
+            elif type == "array" then (.[] | if type == "string" then . else (.name // .key // empty) end)
+            else empty end
+          ' "$raw")
+
+          if [ "$total" -eq 0 ]; then
+            echo "No variables set on $SERVICE in $ENVIRONMENT."
+            exit 0
+          fi
+
+          if [ -z "$keys" ]; then
+            echo "::error::Could not read variable names out of the CLI's JSON ($total entries). Withholding the output, which contains raw values."
+            exit 1
+          fi
+
+          echo "Variables on $SERVICE in $ENVIRONMENT (names only — values are never printed):"
+          printf '%s\n' "$keys" | sort | sed 's/^/  /'
+
+          {
+            echo "### Variables on \`$SERVICE\` (\`$ENVIRONMENT\`)"
+            echo
+            printf '%s\n' "$keys" | sort | while IFS= read -r name; do
+              printf -- '- %s\n' "$name"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set a variable
+        if: inputs.operation == 'set-variable'
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # --stdin keeps the value out of the process arguments, so it cannot
+          # surface in an error message, a trace or the process list.
+          umask 077
+          out="$RUNNER_TEMP/railway-set.log"
+          trap 'rm -f "$out"' EXIT
+
+          status=0
+          printf '%s' "$INPUT_VALUE" \
+            | railway variable set "$INPUT_KEY" --stdin --service "$SERVICE" --environment "$ENVIRONMENT" \
+              > "$out" 2>&1 || status=$?
+
+          # Only show the CLI's own output if it does not contain the value.
+          if grep -qF -- "$INPUT_VALUE" "$out"; then
+            echo "(CLI output withheld: it contained the value.)"
+          else
+            cat "$out"
+          fi
+
+          if [ "$status" -ne 0 ]; then
+            echo "::error::railway variable set failed for $INPUT_KEY on $SERVICE ($ENVIRONMENT), exit $status."
+            exit "$status"
+          fi
+
+          echo "Set $INPUT_KEY on $SERVICE in $ENVIRONMENT. The value is not printed anywhere."
+          echo "Railway redeploys the service on a variable change unless it is configured otherwise."
+          echo "Set \`$INPUT_KEY\` on \`$SERVICE\` (\`$ENVIRONMENT\`). Value not shown." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Redeploy the service
+        if: inputs.operation == 'redeploy'
+        shell: bash
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          railway redeploy --service "$SERVICE" --environment "$ENVIRONMENT" --yes
+          echo "Redeployed \`$SERVICE\` in \`$ENVIRONMENT\`." >> "$GITHUB_STEP_SUMMARY"
