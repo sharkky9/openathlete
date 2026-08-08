@@ -9,6 +9,8 @@ import {
 import { GarminLogo, StravaIcon } from '@/assets/icons';
 import { PolarLogo, SuuntoLogo } from '@/assets/icons/providers';
 import { ConfirmAction } from '@/components/confirm-action';
+import { ApiKeyConnectDialog } from '@/components/connectors/api-key-connect-dialog';
+import { isApiKeyProvider } from '@/components/connectors/api-key-providers';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -48,6 +50,7 @@ import {
 import { SettingsSection } from './settings-section';
 
 const SUPPORTED_PROVIDERS: ConnectorProvider[] = [
+  'INTERVALS_ICU',
   'STRAVA',
   'GARMIN',
   'SUUNTO',
@@ -66,6 +69,8 @@ export function ConnectorsTab() {
   const [updatingProvider, setUpdatingProvider] =
     useState<ConnectorProvider | null>(null);
   const [importingProvider, setImportingProvider] =
+    useState<ConnectorProvider | null>(null);
+  const [apiKeyProvider, setApiKeyProvider] =
     useState<ConnectorProvider | null>(null);
 
   const { data: connectedProviders = [], isLoading: isLoadingConnected } =
@@ -167,6 +172,11 @@ export function ConnectorsTab() {
   };
 
   const handleConnect = (provider: ConnectorProvider) => {
+    // API-key providers (Intervals.icu) have no OAuth redirect: collect the key.
+    if (isApiKeyProvider(provider)) {
+      setApiKeyProvider(provider);
+      return;
+    }
     getOAuthUriMutation.mutate(provider);
   };
 
@@ -520,6 +530,19 @@ export function ConnectorsTab() {
             : ''
         }
         isLoading={disconnectMutation.isPending}
+      />
+
+      <ApiKeyConnectDialog
+        provider={apiKeyProvider}
+        onOpenChange={(open) => {
+          if (!open) setApiKeyProvider(null);
+        }}
+        onConnected={(provider) => {
+          posthog?.capture(AnalyticsEvent.provider_connect_initiated, {
+            provider,
+            source: 'settings',
+          });
+        }}
       />
     </div>
   );

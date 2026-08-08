@@ -1,0 +1,229 @@
+import {
+  IntervalsIcuActivity,
+  IntervalsIcuStream,
+} from '../../types/intervals-icu';
+
+/**
+ * Fixtures shaped after a live probe of a real Intervals.icu account, with the
+ * long streams truncated to a handful of samples and everything that identified
+ * the account replaced by obviously synthetic values: IDs, activity names, and
+ * the GPS track. This repository is public, and a ride's start coordinates give
+ * away a home address; none of it was load-bearing for any assertion.
+ *
+ * The field *set* is checked against the published `Activity` schema in
+ * https://intervals.icu/api/v1/docs, which matters more than it sounds: an
+ * earlier version of this file carried a populated `max_watts`, a property that
+ * does not exist on `Activity` at all. Because the fixture asserted a field the
+ * API never sends, the mapper's `maxWatts` looked correct in tests and was null
+ * on all 1,222 imported activities in reality. Do not add a field here without
+ * finding it in that schema first.
+ */
+
+/** Outdoor road ride recorded on a Garmin Edge 1040 with a Quarq power meter. */
+export const outdoorRideActivity: IntervalsIcuActivity = {
+  id: 'i100000001',
+  name: 'Sample Road Ride',
+  type: 'Ride',
+  sub_type: null,
+  start_date: '2026-06-28T19:18:28Z',
+  start_date_local: '2026-06-28T12:18:28',
+  timezone: 'America/Los_Angeles',
+  moving_time: 5781,
+  elapsed_time: 6978,
+  distance: 34988.06,
+  total_elevation_gain: 638.0,
+  average_speed: 6.045,
+  max_speed: 15.2,
+  average_cadence: 75.39,
+  // Null even though this ride has a power meter: the populated field is icu_average_watts.
+  average_watts: null,
+  icu_average_watts: 202,
+  icu_weighted_avg_watts: 251,
+  // No max_watts: Intervals.icu does not report peak power on the activity
+  // summary. It is derived from the watts stream instead.
+  average_heartrate: 145,
+  max_heartrate: 172,
+  icu_joules: 1167762,
+  calories: 1334,
+  icu_rpe: null,
+  perceived_exertion: null,
+  source: 'GARMIN_CONNECT',
+  device_name: 'Garmin Edge 1040',
+  file_type: 'fit',
+  external_id: '1000000001',
+  strava_id: null,
+  trainer: null,
+  gap: null,
+  description: null,
+  stream_types: [
+    'time',
+    'watts',
+    'cadence',
+    'heartrate',
+    'distance',
+    'altitude',
+    'latlng',
+    'velocity_smooth',
+    'temp',
+    'left_right_balance',
+    'torque',
+  ],
+};
+
+/** Zwift virtual run: no power stream, running-specific load. */
+export const virtualRunActivity: IntervalsIcuActivity = {
+  id: 'i100000002',
+  name: 'Sample Virtual Run',
+  type: 'VirtualRun',
+  start_date: '2026-08-07T01:33:08Z',
+  start_date_local: '2026-08-06T18:33:08',
+  moving_time: 1806,
+  elapsed_time: 1806,
+  distance: 5363.75,
+  total_elevation_gain: 41,
+  average_speed: 2.965,
+  gap: 3.0489,
+  average_cadence: 78.09,
+  average_watts: null,
+  icu_average_watts: null,
+  average_heartrate: 130,
+  max_heartrate: 151,
+  calories: 409,
+  source: 'ZWIFT',
+  device_name: 'ZWIFT 1',
+  trainer: true,
+  file_type: 'fit',
+  external_id: '1000000000000000002',
+  stream_types: [
+    'time',
+    'cadence',
+    'heartrate',
+    'distance',
+    'altitude',
+    'latlng',
+    'velocity_smooth',
+  ],
+};
+
+/**
+ * Stream response shape, truncated to 4 samples.
+ *
+ * Note `latlng`: latitude lives in `data`, longitude in `data2`. Every other
+ * stream leaves `data2` null.
+ */
+export const outdoorRideStreams: IntervalsIcuStream[] = [
+  {
+    type: 'time',
+    name: null,
+    data: [0, 1, 2, 3],
+    data2: null,
+    valueType: 'java.lang.Integer',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'watts',
+    name: null,
+    data: [0, 145, 210, 198],
+    data2: null,
+    valueType: 'java.lang.Integer',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'heartrate',
+    name: null,
+    data: [92, 96, 103, 110],
+    data2: null,
+    valueType: 'java.lang.Integer',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'cadence',
+    name: null,
+    data: [0, 62, 74, 78],
+    data2: null,
+    valueType: 'java.lang.Integer',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'distance',
+    name: null,
+    data: [0, 3.1, 8.4, 14.9],
+    data2: null,
+    valueType: 'java.lang.Float',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'altitude',
+    name: null,
+    data: [12.2, 12.4, 12.8, 13.1],
+    data2: null,
+    valueType: 'java.lang.Float',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'latlng',
+    name: null,
+    data: [10.0, 10.0001, 10.0003, 10.0005],
+    data2: [20.0, 20.0002, 20.0004, 20.0007],
+    valueType: 'java.lang.Float',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'temp',
+    name: null,
+    data: [18, 18, 19, 19],
+    data2: null,
+    valueType: 'java.lang.Integer',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  // Streams OpenAthlete has nowhere to store; they must be dropped, not smuggled in.
+  {
+    type: 'velocity_smooth',
+    name: null,
+    data: [0, 3.1, 5.3, 6.5],
+    data2: null,
+    valueType: 'java.lang.Float',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'torque',
+    name: null,
+    data: [0, 21.4, 27.1, 25.9],
+    data2: null,
+    valueType: 'java.lang.Float',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+  {
+    type: 'left_right_balance',
+    name: null,
+    data: [50, 49, 51, 50],
+    data2: null,
+    valueType: 'java.lang.Integer',
+    valueTypeIsArray: false,
+    allNull: false,
+    custom: false,
+  },
+];
+
+/** The 401 body Intervals.icu returns for both a bad key and a rate-limit block. */
+export const authFailedBody = { status: 401, error: 'Auth failed' };

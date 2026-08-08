@@ -8,4 +8,5 @@ export const connectorProviderLabelMap: Record<ConnectorProvider, string> = {
   SUUNTO: 'Suunto',
   COROS: 'Coros',
   POLAR: 'Polar',
+  INTERVALS_ICU: 'Intervals.icu',
 };
