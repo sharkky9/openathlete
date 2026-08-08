@@ -454,3 +454,173 @@ prisma db seed`, which must print `Running seed command ...`) against a local da
 the demo user through `POST /auth/login`. A failure here is a regression in the seed or in auth hashing.
 If upstream changes the hashing algorithm or pepper handling, this seed must be updated to match
 (compare against `user.service.ts`) — that is a required test update, not a product regression.
+
+## Query cache is emptied at every account boundary
+
+**Reason:** the `QueryClient` is created once at module scope and logging out through the sidebar is
+a client-side navigation, so the cache survives it. Every query key under `apps/web/src/api` is a
+static string with no user identity in it, so the next account signed in to the same tab reads the
+previous one's responses for up to the 5-minute `staleTime`. The visible symptom was a brand-new
+signup being served the previous user's `GET /user/me` and routed past onboarding to the calendar
+(issue #36); the general problem is that one user's data is readable by the next.
+
+**Implementation:** the client moves to `apps/web/src/utils/query-client.ts`, which also exports
+`resetQueryCache()`. `AuthProvider` calls it in `logout` and at the top of `initialize` (which runs
+on mount and after every login, signup and onboarding completion). The axios 401 interceptor, which
+previously constructed a throwaway `QueryClient` and cleared *that*, now clears the real one.
+
+**Upstream modifications:** `apps/web/src/App.tsx`,
+`apps/web/src/contexts/auth/context/auth-provider.tsx`, `apps/web/src/utils/axios.ts`, plus the added
+`apps/web/src/utils/query-client.ts`.
+
+**Upstream candidate:** yes — a data-correctness bug with no fork-specific behaviour.
+
+**Removal condition:** upstream clears the cache on logout, or moves to per-user query keys.
+
+**Upgrade test:** by hand — sign in, log out through the sidebar user menu (not a reload), sign up a
+new account, and confirm it lands on onboarding rather than the calendar. `apps/web` has no test
+runner yet, so this is the only check; see "Deferred: web unit tests" below.
+
+## Message threads are never created without a participant
+
+**Reason:** the Messages page and the chatbot bubble both auto-fired
+`POST /messages/threads` with `participantUserIds: []` whenever the user had no threads. The API
+rejects that payload outright, and the Messages page guard (`threads.length === 0 && !isPending`)
+re-armed as soon as the failed request settled, so it looped. The New conversation dialog builds its
+list from coaches and coached athletes only, so an account with neither also faced a permanently
+disabled Create button and "0 conversations" forever (issues #37 and #39).
+
+**Implementation:** both auto-create effects are removed — the existing
+`m.chatbot_select_or_create()` empty state now stands, and a thread is created only when the user
+asks for one. In the dialog, Create no longer requires a selection: the current user is always a
+participant, so an account with nobody to add can still open a thread and add people later. That
+also removes the hardcoded English `title: 'New Thread'` that used to reach the database; the server
+derives a title from the participants instead.
+
+**Upstream modifications:** `apps/web/src/pages/dashboard/messages/index.tsx`,
+`apps/web/src/components/chatbot/chat-window.tsx`,
+`apps/web/src/components/messages/new-message-thread-dialog.tsx`.
+
+**Upstream candidate:** yes, with one product judgement to flag on integration: allowing a
+single-participant thread is a deliberate choice for this fork's single-user deployment. Upstream may
+prefer to point unlinked users at invitations instead; the auto-create removal stands either way.
+
+**Removal condition:** upstream removes the auto-create effects.
+
+**Upgrade test:** `pnpm api test` (`message-thread.service.spec.ts`) for the server contract. By
+hand: on an account with no coach or athlete link, open Messages and the chatbot bubble and confirm
+the network tab shows no `POST /messages/threads`, then create a conversation from the `+` button.
+
+## New conversation dialog strings go through Paraglide
+
+**Reason:** the dialog hardcoded `Nouvelle conversation`, `Sélectionnez les personnes avec qui vous
+souhaitez dialoguer`, `Aucune personne disponible pour démarrer une conversation` and `Annuler`, so
+an English user saw French text next to an English `Create` button (issue #34). Same class of defect
+as #9, which the "Localized UI strings and date formatting" section above covers.
+
+**Implementation:** the title reuses `m.chatbot_new_conversation()` and the cancel button `m.cancel()`;
+`messages_new_thread_description` and `messages_new_thread_no_people` are new keys in both catalogs.
+
+**Upstream modifications:** `apps/web/src/components/messages/new-message-thread-dialog.tsx`,
+`apps/web/messages/{en,fr}.json`.
+
+**Upstream candidate:** yes — a straight i18n bug fix.
+
+**Removal condition:** upstream localizes the same dialog; then take upstream's version.
+
+**Upgrade test:** `pnpm check:locale-parity`, then open the dialog with the language switcher on
+English and confirm no French remains.
+
+## Roles can be changed after onboarding
+
+**Reason:** `completeOnboarding` was the only writer of `roles`, `UpdateAccountDto` had no `roles`
+field, and `AuthGuard` only routes to onboarding while `onboardingCompleted` is false. An account
+that picked "I'm an athlete" once was athlete-only forever, with no self-serve way to start coaching
+(issue #35). This became reachable only after the fork made the onboarding selection authoritative
+(see "Onboarding role selection is authoritative" above).
+
+**Implementation:** `updateAccountDtoSchema` gains an optional, non-empty `roles` array;
+`UserService.updateAccount` writes it verbatim so roles are removed as well as added, matching
+`completeOnboarding`. Dropping `COACH` while `CoachAthlete` rows still point at the user is rejected
+with a 400 rather than silently orphaning those links. On the web, a new `RolesSection` in the
+Profile settings tab offers the same two toggles the onboarding step uses; it is deliberately not
+role-gated, and on success it invalidates `UserAPI.getMe` and re-runs `initialize()` so
+`useUserRoles`, `SpaceProvider` and the sidebar space switcher pick the change up.
+
+**Upstream modifications:** `libs/shared/src/types/dtos/auth/update-account.dto.ts`,
+`apps/api/src/modules/auth/services/user.service.ts`,
+`apps/api/src/modules/auth/controllers/user.controller.ts` (Swagger only),
+`apps/web/src/views/dashboard/settings-view/profile-tab.tsx`, `apps/web/messages/{en,fr}.json`, plus
+the added `apps/web/src/views/dashboard/settings-view/roles-section.tsx`.
+
+**Upstream candidate:** yes — upstream has the same gap once role selection is authoritative. The
+one judgement call is refusing to drop `COACH` while athletes are still linked; unlinking them
+automatically is the other defensible answer.
+
+**Removal condition:** upstream adds a roles editor (or a dedicated `PATCH /user/roles`).
+
+**Upgrade test:** `pnpm api test` (`user-roles.spec.ts`). By hand: onboard as athlete only, then add
+the coach role from Settings -> Profile and confirm the Athletes tab appears without a reload.
+
+## Deep imports where a barrel would cycle
+
+**Reason:** `src/modules/auth/index.ts` re-exports the auth controllers, and
+`src/modules/subscription/index.ts` re-exports the subscription controllers, which import back into
+`src/modules/auth` for `@JwtUser`. Nest tolerates the cycle when the whole application boots, but
+loading a single service through the barrel evaluates the controller decorators mid-cycle and throws
+`(0 , auth_1.JwtUser) is not a function` — which made `TrainingLoadService` and `UserService`
+untestable in isolation.
+
+**Implementation:** two imports changed from the barrel to the defining file —
+`CaslAbilityFactory` in `training-load.service.ts` and `FeatureAccessService` in
+`athlete-invitation.service.ts`. Runtime behaviour is unchanged; both resolve to the same class.
+
+**Upstream modifications:** `apps/api/src/modules/core/services/training-load.service.ts`,
+`apps/api/src/modules/auth/services/athlete-invitation.service.ts`.
+
+**Upstream candidate:** yes.
+
+**Removal condition:** upstream splits the controllers out of those barrels.
+
+**Upgrade test:** `pnpm api test` — a suite failing to *load* with "is not a function" means the
+cycle is back.
+
+## Training-load ATL/CTL/TSB unit tests
+
+**Reason:** the CTL/ATL/TSB calculation is the core of the product's value and had no test at all.
+
+**Implementation:** `apps/api/src/modules/core/services/training-load.service.spec.ts` drives
+`getTrainingLoadMetrics` and `getTrainingLoadHistory` against an in-memory Prisma stub. Expectations
+come from the closed form of the EWMA (`L * (1 - (1 - alpha)^n)` for a constant load,
+`alpha * L * (1 - alpha)^k` after a spike) rather than from the implementation's own recurrence.
+`apps/api/jest-setup.ts` pins `TZ=UTC` for the run.
+
+**Upstream modifications:** `apps/api/package.json` (jest `setupFiles` and a `src/*`
+`moduleNameMapper`).
+
+**Upstream candidate:** yes.
+
+**Removal condition:** upstream adds equivalent coverage.
+
+**Upgrade test:** `pnpm api test`. A red assertion here is a genuine change to the training-load
+maths — check it was intended before touching the spec.
+
+**Known defect, deliberately not fixed here:** `TrainingLoadService` builds its day keys with a mix
+of local-time `setHours(0, 0, 0, 0)` and UTC `toISOString().split('T')[0]`, so outside UTC a load can
+be attributed to the previous day. The tests pin TZ=UTC rather than paper over it; the fix belongs in
+its own change.
+
+## Deferred: web unit tests
+
+`apps/web` still has no test runner, so #34, #36, #37 and #39 are covered by the API specs and by
+hand only. A working Vitest setup — `vitest`, `jsdom` and Testing Library in
+`apps/web` devDependencies, a `vitest.config.ts` (jsdom plus the Paraglide plugin, because
+`src/paraglide` is generated and gitignored), a `vitest.setup.ts` (Radix needs `ResizeObserver`,
+`scrollIntoView` and `matchMedia`, none of which jsdom implements) and 23 assertions across five
+specs — was written alongside these fixes but is not in this change: it edits `pnpm-lock.yaml`, and
+this branch can only be pushed through the GitHub API, which sends whole files. At 784 KB the
+lockfile cannot go that way, and shipping `apps/web/package.json` without it would break
+`pnpm install --frozen-lockfile` for every CI job.
+
+Landing it needs a push path that can carry the lockfile. Once it lands, `.github/workflows/tests.yml`
+also needs a `web-unit` job next to the existing `api-unit` one, or the suite will not run in CI.
