@@ -1,0 +1,508 @@
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+import {
+  ConnectorProvider,
+  EventActivity,
+  EventType,
+  ProviderAccount,
+} from '@openathlete/database';
+import { ActivityStream, ApiEnvSchemaType } from '@openathlete/shared';
+
+import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
+
+import { compressActivityStream } from '../../core/helpers/activity-stream';
+import {
+  mapIntervalsIcuSportType,
+  mergeIntervalsIcuStreams,
+  resolveIntervalsIcuAverageWatts,
+  resolveIntervalsIcuKilojoules,
+  resolveIntervalsIcuRpe,
+  selectIntervalsIcuStreamTypes,
+  toIntervalsIcuDate,
+} from '../../core/helpers/intervals-icu';
+import {
+  roundCadence,
+  roundDistance,
+  roundElevation,
+  roundEnergy,
+  roundHeartrate,
+  roundPower,
+  roundSpeed,
+} from '../../core/helpers/round-activity-values';
+import {
+  IntervalsIcuActivity,
+  IntervalsIcuAthlete,
+  IntervalsIcuStream,
+} from '../../core/types/intervals-icu';
+import { PrismaService } from '../../prisma/services/prisma.service';
+import { QueueService } from '../../queue/queue.service';
+import { BaseProviderService, FullImportResult } from '../base';
+import {
+  ImportOptions,
+  ImportedActivity,
+  ProviderImportCapability,
+} from '../base/provider-import.interface';
+import {
+  IntervalsIcuApiClient,
+  IntervalsIcuAuthError,
+  IntervalsIcuClientOptions,
+} from './intervals-icu.client';
+
+/**
+ * `GET /athlete/0` is a documented "me" alias, so the athlete ID can be
+ * discovered from the key alone rather than asked for at connect time.
+ */
+const ME_ATHLETE_ID = '0';
+
+/** `oldest` is a required query parameter — there is no "everything" call. */
+const DEFAULT_IMPORT_LOOKBACK_DAYS = 30;
+
+/** How far back a full import reaches. Intervals.icu accounts predate 2010 rarely. */
+const FULL_IMPORT_FLOOR = new Date('2000-01-01T00:00:00.000Z');
+
+/**
+ * Activity listing has no pagination — only a date range and a `limit` that
+ * truncates the *oldest* end. So history is walked in fixed date windows.
+ */
+const IMPORT_WINDOW_DAYS = 365;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Intervals.icu provider.
+ *
+ * Unlike every other provider here, Intervals.icu authenticates with a static,
+ * user-supplied API key over HTTP Basic — there is no authorization redirect,
+ * no client id/secret, no refresh token and no expiry. Consequently this service
+ * defines no `oauthConfig` (the base class now treats it as optional) and
+ * overrides `getValidAccessToken` to hand back the stored key verbatim.
+ *
+ * It is also poll-only: webhooks exist but are gated behind a registered OAuth
+ * application, which is not available to personal API-key users.
+ */
+@Injectable()
+export class IntervalsIcuProviderService
+  extends BaseProviderService
+  implements ProviderImportCapability
+{
+  protected readonly provider = ConnectorProvider.INTERVALS_ICU;
+
+  /**
+   * Intentionally absent: this provider does not use OAuth. The base class
+   * declares `oauthConfig` optional and throws from the OAuth helpers if they
+   * are ever called on a static-credential provider.
+   */
+  protected readonly oauthConfig = undefined;
+
+  constructor(
+    prisma: PrismaService,
+    configService: ConfigService<ApiEnvSchemaType, true>,
+    @Inject(forwardRef(() => QueueService))
+    private readonly queueService: QueueService,
+  ) {
+    super(prisma, configService);
+  }
+
+  /**
+   * The stored "access token" is the personal API key. It never expires and
+   * cannot be refreshed, so the base implementation (which falls through to a
+   * refresh when `expiresAt` is null) must not run.
+   */
+  override async getValidAccessToken(
+    account: ProviderAccount,
+  ): Promise<string> {
+    if (account.status !== 'active') {
+      throw new Error(
+        `Intervals.icu account ${account.providerAccountId} is ${account.status}`,
+      );
+    }
+
+    if (!account.accessToken) {
+      throw new Error(
+        `No Intervals.icu API key stored for account ${account.providerAccountId}`,
+      );
+    }
+
+    return account.accessToken;
+  }
+
+  /** Static API keys cannot be refreshed. */
+  override refreshAccessToken(): Promise<never> {
+    return Promise.reject(
+      new Error('Intervals.icu uses a static API key and cannot refresh it'),
+    );
+  }
+
+  protected createClient(
+    apiKey: string,
+    options?: IntervalsIcuClientOptions,
+  ): IntervalsIcuApiClient {
+    return new IntervalsIcuApiClient(apiKey, {
+      onRetry: ({ attempt, status, delayMs, path }) => {
+        this.logger.warn(
+          `Intervals.icu ${path} returned ${status ?? 'a network error'} (attempt ${attempt}); retrying in ${delayMs}ms`,
+        );
+      },
+      ...options,
+    });
+  }
+
+  private async clientForAccount(
+    account: ProviderAccount,
+  ): Promise<IntervalsIcuApiClient> {
+    const apiKey = await this.getValidAccessToken(account);
+    return this.createClient(apiKey);
+  }
+
+  private athleteIdFor(account: ProviderAccount): string {
+    return account.externalUserId ?? ME_ATHLETE_ID;
+  }
+
+  /**
+   * Validate an API key and link the account.
+   *
+   * There is no OAuth round-trip: the user pastes their key from
+   * https://intervals.icu/settings and we verify it by reading the athlete
+   * profile. The athlete ID is discovered from the response, so the user does
+   * not have to find it themselves.
+   */
+  async connect(
+    user: AuthUser,
+    apiKey: string,
+    athleteId?: string,
+  ): Promise<ProviderAccount> {
+    const trimmedKey = apiKey?.trim();
+    if (!trimmedKey) {
+      throw new Error('An Intervals.icu API key is required');
+    }
+
+    const athlete = await this.prisma.athlete.findUnique({
+      where: { userId: user.userId },
+      select: { athleteId: true },
+    });
+
+    if (!athlete) {
+      throw new Error('Athlete not found');
+    }
+
+    const client = this.createClient(trimmedKey);
+    const requestedAthleteId = athleteId?.trim() || ME_ATHLETE_ID;
+
+    const profile = await client.get<IntervalsIcuAthlete>(
+      `/athlete/${encodeURIComponent(requestedAthleteId)}`,
+    );
+
+    // IDs are opaque strings ("i225849"); never coerce them to numbers.
+    const externalUserId =
+      typeof profile?.id === 'string' && profile.id.length > 0
+        ? profile.id
+        : requestedAthleteId;
+
+    this.logger.log(
+      `Connected Intervals.icu athlete ${externalUserId} for OpenAthlete athlete ${athlete.athleteId}`,
+    );
+
+    return this.saveProviderAccount({
+      athleteId: athlete.athleteId,
+      accessToken: trimmedKey,
+      // No refresh token and no expiry: the key is static.
+      refreshToken: '',
+      scopes: 'api_key',
+      externalUserId,
+    });
+  }
+
+  /**
+   * List activities between two dates.
+   *
+   * The endpoint returns newest-first with no pagination, so history is walked
+   * one date window at a time rather than page by page.
+   */
+  async importActivities(
+    account: ProviderAccount,
+    options?: ImportOptions,
+  ): Promise<ImportedActivity[]> {
+    const client = await this.clientForAccount(account);
+    const athleteId = this.athleteIdFor(account);
+
+    const endDate = options?.endDate ?? new Date();
+    const startDate =
+      options?.startDate ??
+      new Date(endDate.getTime() - DEFAULT_IMPORT_LOOKBACK_DAYS * DAY_MS);
+    const limit = options?.limit ?? Number.POSITIVE_INFINITY;
+
+    const seen = new Set<string>();
+    const imported: ImportedActivity[] = [];
+
+    let windowEnd = endDate;
+
+    while (windowEnd > startDate && imported.length < limit) {
+      const windowStart = new Date(
+        Math.max(
+          startDate.getTime(),
+          windowEnd.getTime() - IMPORT_WINDOW_DAYS * DAY_MS,
+        ),
+      );
+
+      const activities = await client.get<IntervalsIcuActivity[]>(
+        `/athlete/${encodeURIComponent(athleteId)}/activities`,
+        {
+          oldest: toIntervalsIcuDate(windowStart),
+          newest: toIntervalsIcuDate(windowEnd),
+        },
+      );
+
+      for (const activity of activities ?? []) {
+        if (imported.length >= limit) break;
+        if (!activity?.id || seen.has(activity.id)) continue;
+        seen.add(activity.id);
+
+        const mapped = this.toImportedActivity(activity);
+        if (!mapped) continue;
+
+        if (mapped.startDate < startDate || mapped.startDate > endDate) {
+          continue;
+        }
+
+        imported.push(mapped);
+      }
+
+      // Windows are inclusive on both ends; step back a day to avoid re-reading
+      // the boundary date (duplicates are filtered anyway, but this saves calls).
+      windowEnd = new Date(windowStart.getTime() - DAY_MS);
+    }
+
+    return imported;
+  }
+
+  private toImportedActivity(
+    activity: IntervalsIcuActivity,
+  ): ImportedActivity | null {
+    const rawStart = activity.start_date ?? activity.start_date_local;
+    if (!rawStart) {
+      this.logger.warn(
+        `Skipping Intervals.icu activity ${activity.id} with no start date`,
+      );
+      return null;
+    }
+
+    const startDate = new Date(rawStart);
+    if (Number.isNaN(startDate.getTime())) {
+      this.logger.warn(
+        `Skipping Intervals.icu activity ${activity.id} with unparsable start date "${rawStart}"`,
+      );
+      return null;
+    }
+
+    const duration = activity.elapsed_time ?? activity.moving_time ?? 0;
+    const endDate = new Date(startDate.getTime() + duration * 1000);
+
+    return {
+      externalId: activity.id,
+      name: activity.name ?? 'Activity',
+      startDate,
+      endDate,
+      sport: mapIntervalsIcuSportType(activity.type),
+      distance: activity.distance ?? activity.icu_distance ?? undefined,
+      duration,
+      // Upstream provenance (GARMIN_CONNECT / ZWIFT / UPLOAD / ...). Intervals.icu
+      // is an aggregator, so this is the platform the activity really came from.
+      source: activity.source ?? null,
+      deviceName: activity.device_name ?? null,
+      raw: activity,
+    };
+  }
+
+  /**
+   * Import and persist a single activity, including its streams.
+   */
+  async importActivity(
+    account: ProviderAccount,
+    activity: ImportedActivity,
+  ): Promise<EventActivity> {
+    const existing = await this.prisma.eventActivity.findFirst({
+      where: { externalId: activity.externalId },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    const athlete = await this.prisma.athlete.findUnique({
+      where: { athleteId: account.athleteId },
+      select: { athleteId: true },
+    });
+
+    if (!athlete) {
+      throw new Error('Athlete not found');
+    }
+
+    const raw = activity.raw as IntervalsIcuActivity | undefined;
+    if (!raw?.id) {
+      throw new Error(
+        `Intervals.icu activity ${activity.externalId} is missing its raw payload`,
+      );
+    }
+
+    const event = await this.prisma.event.create({
+      data: {
+        athleteId: athlete.athleteId,
+        name: activity.name,
+        type: EventType.ACTIVITY,
+        startDate: activity.startDate,
+        endDate: activity.endDate,
+      },
+    });
+
+    return this.persistActivity(account, event, raw);
+  }
+
+  private async persistActivity(
+    account: ProviderAccount,
+    event: { eventId: number },
+    activity: IntervalsIcuActivity,
+  ): Promise<EventActivity> {
+    const stream = await this.fetchStreams(account, activity);
+
+    const compressionStart = Date.now();
+    const compressedActivityStream = compressActivityStream(stream);
+    const compressionTime = Date.now() - compressionStart;
+    if (compressionTime > 1000) {
+      this.logger.debug(
+        `Stream compression took ${compressionTime}ms for Intervals.icu activity ${activity.id}`,
+      );
+    }
+
+    this.logger.debug(
+      `Importing Intervals.icu activity ${activity.id} (source: ${activity.source ?? 'unknown'}, device: ${activity.device_name ?? 'unknown'})`,
+    );
+
+    return this.prisma.eventActivity.create({
+      data: {
+        provider: ConnectorProvider.INTERVALS_ICU,
+        distance: roundDistance(activity.distance ?? activity.icu_distance),
+        elevationGain: roundElevation(activity.total_elevation_gain),
+        movingTime: activity.moving_time ?? activity.elapsed_time ?? 0,
+        averageSpeed: roundSpeed(activity.average_speed) ?? 0,
+        maxSpeed: roundSpeed(activity.max_speed) ?? 0,
+        averageCadence: roundCadence(activity.average_cadence),
+        averageWatts: roundPower(resolveIntervalsIcuAverageWatts(activity)),
+        maxWatts: roundPower(activity.max_watts),
+        weightedAverageWatts: roundPower(activity.icu_weighted_avg_watts),
+        averageHeartrate: roundHeartrate(activity.average_heartrate),
+        maxHeartrate: roundHeartrate(activity.max_heartrate),
+        kilojoules: roundEnergy(resolveIntervalsIcuKilojoules(activity)),
+        rpe: resolveIntervalsIcuRpe(activity),
+        averageGapSpeed: roundSpeed(activity.gap),
+        sport: mapIntervalsIcuSportType(activity.type),
+        stream: compressedActivityStream as object,
+        description: activity.description ?? '',
+        externalId: activity.id,
+        event: {
+          connect: {
+            eventId: event.eventId,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Fetch the streams an activity actually has.
+   *
+   * `stream_types` on the activity summary tells us exactly which streams exist,
+   * so nothing is guessed and no request is wasted on an activity without them.
+   * The `types` list is always explicit: omitting it makes Intervals.icu return
+   * the raw power stream instead of its corrected one.
+   */
+  private async fetchStreams(
+    account: ProviderAccount,
+    activity: IntervalsIcuActivity,
+  ): Promise<ActivityStream> {
+    const types = selectIntervalsIcuStreamTypes(activity.stream_types);
+
+    if (types.length === 0) {
+      return {};
+    }
+
+    try {
+      const client = await this.clientForAccount(account);
+      const streams = await client.get<IntervalsIcuStream[]>(
+        `/activity/${encodeURIComponent(activity.id)}/streams`,
+        { types: types.join(',') },
+      );
+
+      return mergeIntervalsIcuStreams(streams ?? []);
+    } catch (error) {
+      if (error instanceof IntervalsIcuAuthError) {
+        throw error;
+      }
+
+      // A missing or oversized stream should not sink the whole activity.
+      this.logger.error(
+        `Error fetching Intervals.icu streams for activity ${activity.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return {};
+    }
+  }
+
+  /**
+   * Queue every historical activity for import.
+   */
+  async queueFullImport(account: ProviderAccount): Promise<FullImportResult> {
+    this.logger.log(
+      `Queueing Intervals.icu historical import for account ${account.providerAccountId}`,
+    );
+
+    const activities = await this.importActivities(account, {
+      startDate: FULL_IMPORT_FLOOR,
+      endDate: new Date(),
+    });
+
+    this.logger.log(
+      `Fetched ${activities.length} activities from Intervals.icu for account ${account.providerAccountId}`,
+    );
+
+    if (activities.length === 0) {
+      return { queuedActivities: 0 };
+    }
+
+    const queued = await this.enqueueActivities(account, activities);
+
+    this.logger.log(
+      `Queued ${queued} Intervals.icu activities for import (out of ${activities.length} total)`,
+    );
+
+    return { queuedActivities: queued };
+  }
+
+  private async enqueueActivities(
+    account: ProviderAccount,
+    activities: ImportedActivity[],
+  ): Promise<number> {
+    if (activities.length === 0) {
+      return 0;
+    }
+
+    const existing = await this.prisma.eventActivity.findMany({
+      where: {
+        externalId: { in: activities.map((a) => a.externalId) },
+      },
+      select: { externalId: true },
+    });
+
+    const existingIds = new Set(existing.map((a) => a.externalId));
+    const newActivities = activities.filter(
+      (a) => !existingIds.has(a.externalId),
+    );
+
+    if (newActivities.length === 0) {
+      this.logger.log('All Intervals.icu activities already imported');
+      return 0;
+    }
+
+    await this.queueService.addActivityImportJobs(account, newActivities, true);
+    return newActivities.length;
+  }
+}
