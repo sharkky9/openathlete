@@ -8,7 +8,7 @@ details of the individual services are in `README.md`; backups are in `BACKUP-RE
 | Environment | Web                                     | API                                     | Deploys from                         |
 | ----------- | --------------------------------------- | --------------------------------------- | ------------------------------------ |
 | production  | `ultracully.up.railway.app`             | `ultracully-api.up.railway.app`         | `main`                               |
-| staging     | `web-staging-8be9.up.railway.app`       | `api-staging-9005.up.railway.app`       | `main` (or a branch you point it at) |
+| staging     | `web-staging-d1e5.up.railway.app`       | `api-staging-9dc2.up.railway.app`       | `main` (or a branch you point it at) |
 | PR preview  | `web-openathlete-pr-<n>.up.railway.app` | `api-openathlete-pr-<n>.up.railway.app` | the PR branch                        |
 
 Each environment has its own `postgres`, `redis`, secrets and domains. Previews are created from
@@ -54,6 +54,24 @@ redirect/webhook URLs, `BREVO_FROM_EMAIL`, `FIREBASE_FUNCTIONS_URL`, `BETTER_STA
 absent are equivalent. Three URL variables are the exception: `APP_URL`, `FRONTEND_URL` and
 `REDIS_URL` still use a bare `.url().optional()`, so those must be omitted entirely rather than set
 to `""`.
+
+### Rotating the Intervals.icu API key
+
+Intervals.icu permits only one active personal API key per account. Pressing **Generate** under
+Intervals.icu → Settings → Developer Settings invalidates the old key immediately; there is no
+overlap window. Treat rotation as one operation:
+
+1. Keep the Intervals.icu settings dialog open and generate the replacement key.
+2. Replace `INTERVALS_ICU_API_KEY` on the Railway `api` service in both `production` and `staging`,
+   then deploy both variable changes.
+3. Reconnect (or resubmit credentials for) every existing Intervals.icu provider account so its
+   stored access token is refreshed from the server-held key.
+4. Verify the old key returns 401, the new key reaches `GET /api/v1/athlete/0`, and an activity
+   import completes.
+
+Never paste either key into an issue, PR, workflow input, command line, or log. A 401 from
+Intervals.icu can also be a temporary rate-limit block, so retry the new key before treating it as
+invalid or disconnecting an account.
 
 ## Making a change
 
@@ -251,8 +269,8 @@ as a fallback, but that is best-effort and may find nothing. Treat supplying the
 path: paste it into the `project_id` dispatch input, or set it once as the `RAILWAY_PROJECT_ID`
 repository variable (Settings → Secrets and variables → Actions → Variables). The input wins over the
 variable, and either one skips discovery entirely. The id is in the Railway project URL and under
-project Settings → General. Nothing was read or deleted in that run; the purge itself has still never
-executed against Railway.
+project Settings → General. The real purge completed in run `31242649116`: it deleted all seven
+then-targeted credential occurrences from staging and its verification pass found zero survivors.
 
 ## Recreating the project from scratch
 
