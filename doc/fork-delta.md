@@ -28,23 +28,36 @@ described below only where their behaviour matters during an upgrade.
 **Upgrade test:** `Deployment smoke test` workflow; then deploy the upgrade branch to a staging
 Railway environment and check the API, web and backup services boot.
 
-## Upstream Scaleway deploy workflow disabled
+## Upstream Scaleway deploy workflow and Terraform stack deleted
 
 **Reason:** upstream's deploy workflow pushes to a Scaleway registry this fork has no credentials
-for, and would fail on every push to `main`.
+for, and the OpenTofu/Terraform stack at the `infra/` root provisions the Scaleway VPC, managed
+Postgres, managed Redis, registry namespace, secrets and serverless containers that workflow
+targets. This fork deploys to Railway (see `infra/railway`) and has no Scaleway account, so neither
+can ever run here. They are deleted rather than carried as dead code: a guard on the workflow only
+bought a permanently-skipped job, and nothing can neutralize an infrastructure stack that describes
+resources the fork does not own.
 
-**Implementation:** one `if: github.repository == 'openathleteorg/openathlete'` condition on the
-`build-and-deploy` job in `.github/workflows/deploy.yml`.
+**Implementation:** `.github/workflows/deploy.yml` is removed, together with the whole Scaleway
+stack at the `infra/` root — `providers.tf`, `variables.tf`, `networking.tf`, `registry.tf`,
+`rdb.tf`, `redis_managed.tf`, `secrets.tf`, `container.tf`, `outputs.tf`,
+`terraform.tfvars.example` and `.terraform.lock.hcl` — and the now-dead Terraform entries in
+`.gitignore`. `infra/` therefore contains only `infra/railway/`.
 
-**Upstream modifications:** `.github/workflows/deploy.yml` (3 added lines). The file was previously
-deleted in this fork; it was restored with a guard so upstream edits to it merge cleanly instead of
-raising a modify/delete conflict.
+**Upstream modifications:** `.github/workflows/deploy.yml` and the eleven `infra/` root files are
+deleted; `.gitignore` loses its `.terraform` entry and its `# Terraform` block. Deletions conflict
+loudly on integration — see the upgrade test.
 
 **Upstream candidate:** no.
 
-**Removal condition:** upstream removes or replaces the Scaleway workflow.
+**Removal condition:** this fork starts deploying to Scaleway, or upstream itself drops the
+workflow and the stack (at which point the entry is moot rather than removed).
 
-**Upgrade test:** confirm the job is skipped, not failed, on a push to this fork's `main`.
+**Upgrade test:** a merge from upstream re-introduces every deleted path, either as a modify/delete
+conflict for the files upstream touched or as a plain restore for the rest. Resolve each in favour
+of the deletion (`git rm` the re-added paths), then confirm `infra/` still contains only `railway/`
+and `.github/workflows/` still has no `deploy.yml`. Reconsider only if upstream has meanwhile
+retargeted the workflow at something this fork could actually use.
 
 ## Web container renders nginx.conf at startup
 
@@ -454,3 +467,69 @@ prisma db seed`, which must print `Running seed command ...`) against a local da
 the demo user through `POST /auth/login`. A failure here is a regression in the seed or in auth hashing.
 If upstream changes the hashing algorithm or pepper handling, this seed must be updated to match
 (compare against `user.service.ts`) — that is a required test update, not a product regression.
+
+## Package `license` fields match the shipped LICENSE
+
+**Reason:** the root `LICENSE` is verbatim AGPLv3 (byte-identical to upstream's), and the README
+badge, the README License section and the website all say AGPLv3 — but every `package.json` in the
+tree declared `"license": "MPL-2.0"` and `CONTRIBUTING.md` asked contributors to license their work
+under the MPL. The contradiction is inherited verbatim from upstream. The `LICENSE` file wins: the
+metadata is what a registry, an SBOM scanner and a downstream reader see first, and it was
+describing a license the project does not ship.
+
+**Implementation:** `"license": "AGPL-3.0-only"` (the SPDX id for the shipped text) in
+`package.json`, `apps/{api,web,website}/package.json`, `libs/shared/package.json`,
+`libs/database/package.json`, `libs/config/{eslint-config,prettier-config}/package.json` and
+`e2e/package.json`; `CONTRIBUTING.md`'s License section now points at the AGPLv3 (same `LICENSE`
+link). `e2e/package-lock.json` still carries the old string in its root entry — it is generated and
+rewrites itself on the next `npm install`. No license text is changed anywhere.
+
+**Upstream modifications:** the nine `package.json` files and `CONTRIBUTING.md`.
+
+**Upstream candidate:** yes, strongly — the fork relicenses nothing, it only corrects metadata that
+misdescribed upstream's own `LICENSE`, and upstream carries the identical contradiction today.
+
+**Removal condition:** upstream corrects its own `license` fields (then take upstream's version), or
+upstream deliberately relicenses to MPL-2.0 and replaces `LICENSE` to match — in which case this
+entry is wrong rather than merely obsolete.
+
+**Upgrade test:** grep the tree for `MPL-2.0`; the only tolerable hit is a regenerated lockfile.
+Confirm `LICENSE` is still AGPLv3 and that nothing else claims otherwise. This has no effect on
+`scripts/dependency-audit.js`, which reads only the advisory list from `pnpm audit --json --prod`.
+
+## Marketing copy limited to shipped capabilities
+
+**Reason:** the README, the landing copy and three blog articles advertised integrations and
+features that do not exist in this tree — TrainingPeaks import (no code anywhere), Coros
+(`coros.adapter.ts` is a `[MOCK]` no-op, its OAuth credentials are empty strings and it is
+commented out of the app's provider list), workout export to Polar and to Strava (both are
+import-only; the Polar adapter sets `exportWorkouts: false`), and "full data export" (there is no
+export endpoint or UI control). Two articles also carried a duplicated "Garmin, Polar, and Polar"
+where the second was plainly meant to be Suunto — in one of them it had reached the slug.
+
+**Implementation:** import is described as Strava/Garmin/Suunto/Polar and workout export as
+Garmin/Suunto only; the data-export claims are dropped (the README comparison row now reads
+`❌ Not yet`, and landing comparison row 6 renders as a "no" with `Not yet`, which needed the one
+status flag in `comparison.tsx`); Coros survives only in the README roadmap, where it is
+legitimately aspirational; the sync article's slug becomes
+`how-to-sync-workouts-to-garmin-suunto` (it had no inbound references). No claim about Intervals.icu
+is added — there is no code for it yet.
+
+**Upstream modifications:** `README.md`, `apps/website/messages/{en,fr}.json`,
+`apps/website/src/components/landing/sections/comparison.tsx`,
+`apps/website/src/app/metadata.tsx` and `apps/website/src/components/seo/structured-data.tsx` (the
+SEO description repeats the landing copy in three places), and four articles under
+`apps/website/src/content/blog/`. These are prose files upstream edits freely, so upstream copy
+changes will conflict here.
+
+**Upstream candidate:** yes — upstream ships the same overclaims. Expect upstream to prefer shipping
+the capability over correcting the copy for some of them.
+
+**Removal condition:** the capability lands (a real Coros adapter, Polar workout export, a data
+export endpoint) — the claim then becomes true and the wording can go back.
+
+**Upgrade test:** on conflict, resolve toward whichever side matches the code: check
+`apps/api/src/modules/providers-sync/adapters/` for `exportWorkouts` and for a non-`[MOCK]` Coros
+adapter, and search the API for an export endpoint before restoring any "full export" wording. Then
+`pnpm format` and `pnpm website build`; `apps/website/messages/{en,fr}.json` must keep identical key
+sets or the Paraglide build fails.

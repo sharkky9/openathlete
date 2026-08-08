@@ -22,13 +22,13 @@ export function generateMetadata(options?: GenerateMetadataOptions): Metadata {
   const defaultTitle =
     'OpenAthlete — Ethical European open-source alternative to TrainingPeaks & Strava';
   const defaultDescription =
-    'AGPLv3 endurance training platform: EU-oriented hosting, transparent CTL/ATL/TSB logic in code, self-hosting, and full export. Built in Grenoble.';
+    'AGPLv3 endurance training platform: EU-oriented hosting, transparent CTL/ATL/TSB logic in code, and self-hosting. Built in Grenoble.';
 
   // French metadata
   const frTitle =
     'OpenAthlete — Alternative européenne open source à TrainingPeaks et Strava';
   const frDescription =
-    "Plateforme d'endurance sous AGPLv3 : hébergement orienté UE, logique CTL/ATL/TSB lisible dans le code, auto-hébergement et export complet. Développée à Grenoble.";
+    "Plateforme d'endurance sous AGPLv3 : hébergement orienté UE, logique CTL/ATL/TSB lisible dans le code et auto-hébergement. Développée à Grenoble.";
 
   // Coaches page metadata
   const coachesTitleEn = 'OpenAthlete — For Coaches';

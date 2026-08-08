@@ -10,7 +10,7 @@
     The ethical European alternative to TrainingPeaks and Strava.
     <br />
     <br />
-    OpenAthlete is open source under the AGPLv3, built so you can own your training data: self-host, export, and avoid vendor lock-in. Core hosting and processing are oriented toward the European Union with GDPR-minded defaults.
+    OpenAthlete is open source under the AGPLv3, built so you can own your training data: self-host it, audit it, and avoid vendor lock-in. Core hosting and processing are oriented toward the European Union with GDPR-minded defaults.
     <br />
     <a href="https://openathlete.org"><strong>Learn more »</strong></a>
     <br />
@@ -52,10 +52,10 @@ OpenAthlete is a different proposition: comparable tracking and analysis in an o
 ### Key Features
 
 - 🇪🇺 **EU-Hosted & GDPR-Native** — Data processed in the European Union
-- 🔒 **You Own Your Data** — Self-hostable, full export, no lock-in
+- 🔒 **You Own Your Data** — Self-hostable, open schema, no lock-in
 - 🔍 **Transparent Algorithms** — Training load formulas (CTL/ATL/TSB) are in the code, auditable, customizable
 - 📊 **Comprehensive Tracking** — Workouts, fitness/fatigue/form metrics, progression visualizations
-- 🔗 **Device Integrations** — Strava, Garmin, Suunto, Polar, Coros
+- 🔗 **Device Integrations** — Activity import from Strava, Garmin, Suunto, Polar; workout export to Garmin and Suunto
 - 📱 **Mobile Apps** — Native iOS ([TestFlight](https://testflight.apple.com/join/1hBg4mR1)), Android coming
 - 🤖 **AI Assistance** — Modest helpers for session generation and load monitoring (not a replacement for a coach)
 - 🌐 **Open Source** — AGPLv3, community-driven, sustainably funded
@@ -69,7 +69,7 @@ OpenAthlete is a different proposition: comparable tracking and analysis in an o
 | **Data hosted in EU** | ✅ France | ❌ US | ❌ US | ⚠️ Mixed |
 | **GDPR-native** | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **Transparent algorithms** | ✅ Code audit | ❌ Black box | ❌ Black box | ⚠️ Partial |
-| **Full data export** | ✅ Native | ⚠️ Limited | ⚠️ Limited | ✅ |
+| **Full data export** | ❌ Not yet | ⚠️ Limited | ⚠️ Limited | ✅ |
 | **CTL/ATL/TSB tracking** | ✅ | ✅ | ❌ | ✅ |
 | **AI session generation** | ✅ Optional | ⚠️ Premium | ❌ | ❌ |
 | **Price** | 12€/mo or 99€/yr | $19.99/mo | $11.99/mo | Free (donation) |

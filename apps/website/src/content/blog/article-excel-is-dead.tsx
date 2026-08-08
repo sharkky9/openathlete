@@ -136,8 +136,8 @@ export const articleExcelIsDead: BlogPost = {
         <p>With OpenAthlete:</p>
         <ol>
           <li>You update the plan</li>
-          <li>The athlete gets an instant notification</li>
-          <li>The plan syncs to their watch automatically</li>
+          <li>The athlete sees the new session in their app</li>
+          <li>The plan syncs to their Garmin or Suunto watch automatically</li>
         </ol>
 
         <p>
@@ -164,8 +164,8 @@ export const articleExcelIsDead: BlogPost = {
         </p>
 
         <p>
-          OpenAthlete automatically imports from Strava, Garmin, TrainingPeaks,
-          and other platforms. Data flows in real-time. You see patterns as they
+          OpenAthlete imports automatically from Strava, Garmin, Suunto, and
+          Polar. Data flows in without copy-paste. You see patterns as they
           develop, not after they've become problems.
         </p>
 
@@ -189,9 +189,9 @@ export const articleExcelIsDead: BlogPost = {
         </p>
 
         <p>
-          OpenAthlete's AI analyzes all this automatically. It detects patterns
-          you might miss. It alerts you to risks before they become problems. It
-          suggests adjustments based on data, not guesswork.
+          OpenAthlete's AI assistant analyzes this on request. Ask it about an
+          athlete's last four weeks and it surfaces the patterns you might miss.
+          It suggests adjustments based on data, not guesswork.
         </p>
 
         <h2>The Sync Problem</h2>
@@ -208,7 +208,7 @@ export const articleExcelIsDead: BlogPost = {
         </p>
 
         <p>
-          OpenAthlete syncs directly to Garmin, Polar, Polar, and other devices.
+          OpenAthlete pushes workouts directly to Garmin and Suunto watches.
           When you create a plan, it automatically appears on the athlete's
           watch. No manual entry. No errors. No excuses.
         </p>
@@ -388,8 +388,11 @@ export const articleExcelIsDead: BlogPost = {
         <p>Avec OpenAthlete :</p>
         <ol>
           <li>Vous mettez à jour le plan</li>
-          <li>L'athlète reçoit une notification instantanée</li>
-          <li>Le plan se synchronise automatiquement sur sa montre</li>
+          <li>L'athlète voit la nouvelle séance dans son application</li>
+          <li>
+            Le plan se synchronise automatiquement sur sa montre Garmin ou
+            Suunto
+          </li>
         </ol>
 
         <p>
@@ -418,10 +421,10 @@ export const articleExcelIsDead: BlogPost = {
         </p>
 
         <p>
-          OpenAthlete importe automatiquement depuis Strava, Garmin,
-          TrainingPeaks et d'autres plateformes. Les données affluent en temps
-          réel. Vous voyez les modèles au fur et à mesure qu'ils se développent,
-          pas après qu'ils soient devenus des problèmes.
+          OpenAthlete importe automatiquement depuis Strava, Garmin, Suunto et
+          Polar. Les données arrivent seules, sans copier-coller. Vous voyez les
+          modèles au fur et à mesure qu'ils se développent, pas après qu'ils
+          soient devenus des problèmes.
         </p>
 
         <h2>L'Écart d'Analyse</h2>
@@ -448,10 +451,10 @@ export const articleExcelIsDead: BlogPost = {
         </p>
 
         <p>
-          L'IA d'OpenAthlete analyse tout cela automatiquement. Elle détecte les
-          modèles que vous pourriez manquer. Elle vous alerte des risques avant
-          qu'ils ne deviennent des problèmes. Elle suggère des ajustements basés
-          sur les données, pas sur des suppositions.
+          L'assistant IA d'OpenAthlete analyse tout cela à la demande.
+          Interrogez-le sur les quatre dernières semaines d'un athlète et il
+          fait ressortir les modèles que vous pourriez manquer. Il suggère des
+          ajustements basés sur les données, pas sur des suppositions.
         </p>
 
         <h2>Le Problème de Synchronisation</h2>
@@ -470,10 +473,10 @@ export const articleExcelIsDead: BlogPost = {
         </p>
 
         <p>
-          OpenAthlete se synchronise directement avec Garmin, Polar, Polar et
-          d'autres appareils. Quand vous créez un plan, il apparaît
-          automatiquement sur la montre de l'athlète. Pas d'entrée manuelle. Pas
-          d'erreurs. Pas d'excuses.
+          OpenAthlete envoie les séances directement sur les montres Garmin et
+          Suunto. Quand vous créez un plan, il apparaît automatiquement sur la
+          montre de l'athlète. Pas d'entrée manuelle. Pas d'erreurs. Pas
+          d'excuses.
         </p>
 
         <h2>Comparaison Concrète</h2>
