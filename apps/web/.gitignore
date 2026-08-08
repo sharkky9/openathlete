@@ -28,3 +28,9 @@ vite.config.js
 vite.config.d.ts
 tsconfig.node.tsbuildinfo
 .env
+
+# paraglide
+# src/paraglide/.gitignore already excludes this from git, but Prettier only
+# reads the .gitignore next to its working directory, so `pnpm format` would
+# otherwise check ~1000 generated files. Mirrors apps/website/.gitignore.
+/src/paraglide

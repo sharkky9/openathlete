@@ -36,9 +36,11 @@ the Zod URL validator rejects `""`.
 ## Making a change
 
 1. Branch, commit, push, open a PR against `main`.
-2. Two workflows must pass: `CI` (`pnpm lint`, `pnpm tsc:check`, builds) and
-   `Deployment smoke` (builds both images, runs migrations against pgvector, exercises signup and
-   login, checks the SPA and its fallback route).
+2. The required workflows must pass: `Lint` (`pnpm lint`), `Type Check` (`pnpm tsc:check`),
+   `Build` (API and web builds), `Tests` (the apps/api Jest suite) and
+   `Deployment smoke test` (builds both images, runs migrations against pgvector, exercises signup
+   and login, checks the SPA and its fallback route, and runs the Playwright golden path).
+   See `doc/merge-policy.md` for the exact list of required status checks.
 3. Railway builds a preview environment for the PR. Its URLs are posted on the PR by the Railway
    GitHub app; use them to test the change against a throwaway database.
 4. Merge. Railway deploys `main` to production automatically; the API entrypoint runs

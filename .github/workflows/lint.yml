@@ -2,9 +2,13 @@ name: Lint
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
@@ -37,4 +41,3 @@ jobs:
       - name: Run linter
         run: pnpm lint
         shell: bash
-

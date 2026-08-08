@@ -1,0 +1,104 @@
+name: Checks
+
+# Fork-owned workflow (see doc/fork-delta.md). Holds the checks that had no home
+# in the upstream lint/type-check/build workflows: Prettier formatting, the
+# apps/website Next build, a dependency advisory scan and a secret scan.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Format check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      # No Prisma / shared / Paraglide build here on purpose: `pnpm format` is
+      # `prettier --check` over each package's checked-in `src`, and the
+      # generated Paraglide and Prisma output is gitignored, so generating it
+      # would only add files Prettier is not meant to police.
+      - name: Check formatting
+        run: pnpm format
+        shell: bash
+
+  build-website:
+    name: Website build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      # `pnpm website build` runs the Paraglide compile itself (see the package
+      # `build` script), but Next type-checks everything the app pulls in, which
+      # reaches `libs/database/client.ts` -> `./generated/client`. That is Prisma
+      # output, so it has to be generated first or the build fails with
+      # "Cannot find module './generated/client'". Same two setup steps as the
+      # Build API job in build.yml.
+      - name: Generate Prisma client
+        run: pnpm database run db:generate
+        shell: bash
+
+      - name: Build shared library
+        run: pnpm shared build
+        shell: bash
+
+      - name: Build website
+        run: pnpm website build
+        shell: bash
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    # Reports on the delta, not the absolute count. A plain
+    # `pnpm audit --audit-level=high --prod` is red today and stays red: the
+    # production tree carries ~96 distinct high/critical advisories, almost all
+    # of them deep transitive dependencies of @getbrevo/brevo and @mastra/core.
+    # A permanently-red check just teaches people to ignore checks, and a
+    # permanently-suppressed one is no better. So the known set is recorded in
+    # .github/dependency-audit-baseline.json and this job fails only on
+    # advisories that are not in it. The full list is printed every run either
+    # way, so the number stays visible.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      - name: Audit production dependencies against the baseline
+        run: node scripts/dependency-audit.js
+        shell: bash
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # gitleaks scans the commit range, so it needs the history rather than
+          # the default single-commit checkout.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
