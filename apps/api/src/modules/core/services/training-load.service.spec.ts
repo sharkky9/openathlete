@@ -29,10 +29,11 @@ import { TrainingLoadService } from './training-load.service';
  * TSB is CTL - ATL: fatigue falls away quickly, fitness slowly, so rest pushes
  * TSB positive and a hard block pushes it negative.
  *
- * KNOWN LIMITATION (not asserted here, and not introduced by these tests): the
- * service mixes local-time `setHours(0, 0, 0, 0)` with UTC
- * `toISOString().split('T')[0]` when building its day keys, so outside UTC a
- * load can be attributed to the previous day. `jest-setup.ts` pins TZ=UTC.
+ * A training day is a UTC calendar day throughout: `TrainingLoadEntry.date` is a
+ * `@db.Date` column, which Prisma hands back as UTC midnight, and the write path
+ * derives an entry's day from the UTC calendar day of the activity's start
+ * instant. The read paths must use the same definition or loads land in the
+ * wrong bucket — see the timezone-independence block at the bottom of this file.
  */
 
 const ATHLETE_ID = 42;
@@ -115,6 +116,25 @@ const metricsOn = (entries: Entry[], targetDate: string) =>
     CALCULATION_TYPE,
     day(targetDate),
   );
+
+/** As `metricsOn`, but for an arbitrary instant rather than a UTC midnight. */
+const metricsAt = (entries: Entry[], targetDate: Date) =>
+  buildService(entries).service.getTrainingLoadMetrics(
+    USER,
+    CALCULATION_TYPE,
+    targetDate,
+  );
+
+/**
+ * The zone this process is running in, for failure messages.
+ *
+ * Assigning `process.env.TZ` at runtime cannot move it: Jest replaces
+ * `process.env` with a plain sandbox object, so the libuv hook that would
+ * re-read the zone never fires. The timezone therefore has to be set on the
+ * process before Jest starts — see `pnpm api test:timezones`.
+ */
+const PROCESS_TIMEZONE =
+  Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'unknown';
 
 const historyFor = (entries: Entry[], startDate: string, endDate: string) =>
   buildService(entries).service.getTrainingLoadHistory(
@@ -416,5 +436,93 @@ describe('TrainingLoadService — history', () => {
     expect(lastDay.atl).toBeCloseTo(metrics.atl, 8);
     expect(lastDay.ctl).toBeCloseTo(metrics.ctl, 8);
     expect(lastDay.tsb).toBeCloseTo(metrics.tsb, 8);
+  });
+});
+
+/**
+ * A training day is a UTC calendar day, so none of these numbers may depend on
+ * the timezone the server happens to run in.
+ *
+ * The service used to bucket its day grid with local-time `setHours(0, 0, 0, 0)`
+ * while keying it with UTC `toISOString().split('T')[0]`. Those agree only at
+ * non-positive UTC offsets, and only for target instants late enough in the UTC
+ * day — so the defect was invisible both to CI and to the suite, which pinned
+ * `TZ=UTC`. It is a silent wrong answer rather than a crash, and because CTL and
+ * ATL are cumulative, one misplaced day propagates through every later day.
+ */
+describe(`TrainingLoadService — timezone independence (TZ=${PROCESS_TIMEZONE})`, () => {
+  it('counts a load on the day it was recorded', async () => {
+    const metrics = await metricsOn(
+      [{ date: '2026-03-01', value: 100 }],
+      '2026-03-01',
+    );
+
+    expect(metrics.atl).toBeCloseTo(ALPHA_ATL * 100, 10);
+    expect(metrics.ctl).toBeCloseTo(ALPHA_CTL * 100, 10);
+    expect(metrics.totalLoad).toBe(100);
+    expect(metrics.trainingDays).toBe(1);
+  });
+
+  it('returns the requested days from the history, and only those', async () => {
+    const history = await historyFor(
+      [{ date: '2026-03-02', value: 100 }],
+      '2026-03-01',
+      '2026-03-05',
+    );
+
+    expect(history.map((row) => row.date.toISOString().split('T')[0])).toEqual([
+      '2026-03-01',
+      '2026-03-02',
+      '2026-03-03',
+      '2026-03-04',
+      '2026-03-05',
+    ]);
+    // The load must sit on 2026-03-02, not drift to a neighbouring day.
+    expect(history.map((row) => row.load)).toEqual([0, 100, 0, 0, 0]);
+  });
+
+  /**
+   * The case that motivated all of this.
+   *
+   * The owner is in America/Los_Angeles. He rides at 19:00 on Friday 7 August;
+   * that instant is 2026-08-08T02:00Z, so the write path — which files an entry
+   * under the UTC calendar day of the activity's start — stores it as
+   * 2026-08-08.
+   *
+   * The dashboard then asks for metrics "now", i.e. at that same 02:00Z
+   * instant. The old grid stopped at *local* midnight, which in PDT is
+   * 2026-08-07, so it never generated a 2026-08-08 bucket and the ride he had
+   * just finished counted for nothing until the next day. Because ATL and CTL
+   * are cumulative, that understatement then propagated forward.
+   *
+   * Fails under `TZ=America/Los_Angeles` against the old local/UTC mix; passes
+   * in every zone once the grid is built in UTC.
+   */
+  it('counts an evening activity logged late in the UTC day', async () => {
+    const rideInstant = new Date('2026-08-08T02:00:00.000Z'); // 19:00 PDT, 7 Aug
+
+    const metrics = await metricsAt(
+      [{ date: '2026-08-08', value: 100 }],
+      rideInstant,
+    );
+
+    expect(metrics.atl).toBeCloseTo(ALPHA_ATL * 100, 10);
+    expect(metrics.ctl).toBeCloseTo(ALPHA_CTL * 100, 10);
+    expect(metrics.totalLoad).toBe(100);
+  });
+
+  /**
+   * The mirror case, for zones ahead of UTC: there, local midnight falls on the
+   * *previous* UTC day, so the whole grid shifted back one day and the most
+   * recent day of training was dropped from the averages.
+   */
+  it('counts a load on the target day when asked early in the UTC day', async () => {
+    const metrics = await metricsAt(
+      [{ date: '2026-03-01', value: 100 }],
+      new Date('2026-03-01T01:00:00.000Z'),
+    );
+
+    expect(metrics.atl).toBeCloseTo(ALPHA_ATL * 100, 10);
+    expect(metrics.totalLoad).toBe(100);
   });
 });
