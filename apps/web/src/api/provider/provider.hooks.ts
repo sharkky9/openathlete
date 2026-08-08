@@ -43,6 +43,25 @@ export const useSetOAuthTokenMutation = (
   });
 };
 
+export const useSetProviderCredentialsMutation = (
+  opt?: MutationOptions<
+    Awaited<ReturnType<typeof ProviderAPI.setCredentials>>,
+    Error,
+    Parameters<typeof ProviderAPI.setCredentials>[0]
+  >,
+) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...opt,
+    mutationFn: ProviderAPI.setCredentials,
+    onSuccess: (data, variables, onMutateResult, context) => {
+      if (opt?.onSuccess)
+        opt.onSuccess(data, variables, onMutateResult, context);
+      queryClient.invalidateQueries({ queryKey: [providerKeys.getConnected] });
+    },
+  });
+};
+
 export const useDisconnectProviderMutation = (
   opt?: MutationOptions<
     Awaited<ReturnType<typeof ProviderAPI.disconnect>>,
