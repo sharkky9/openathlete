@@ -236,8 +236,25 @@ interface FakeEvent {
   eventId: number;
   athleteId: number;
   name: string;
+  type: string;
   startDate: Date;
   endDate: Date;
+  createdAt: Date;
+}
+
+/**
+ * The `where` the orphan lookup builds. Every clause is optional here and an
+ * absent one filters nothing, exactly as Prisma treats it — so dropping a
+ * clause from the query widens what the fake matches, and the tests below fail
+ * for the reason they are written to catch rather than on a stray undefined.
+ */
+interface FakeEventWhere {
+  athleteId?: number;
+  type?: string;
+  name?: string;
+  startDate?: Date;
+  endDate?: Date;
+  createdAt?: { gte: Date; lte: Date };
 }
 
 interface FakeEventActivity {
@@ -256,8 +273,8 @@ const ACCOUNT = {
 
 /** Shaped like the summary Intervals.icu really returns: no `max_watts`. */
 const RIDE = {
-  id: 'i167939639',
-  name: 'Marin County Road Cycling',
+  id: 'i100000001',
+  name: 'Sample Road Ride',
   type: 'Ride',
   start_date: '2026-06-28T19:18:28Z',
   moving_time: 5781,
@@ -277,6 +294,28 @@ const IMPORTED = {
   raw: RIDE,
 } as unknown as Parameters<IntervalsIcuProviderService['importActivity']>[1];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * An event this importer would have written for `IMPORTED` and then failed to
+ * finish: same athlete, same start, same end, same name, and old enough that
+ * nothing can still be working on it. Override a field to move it out of reach
+ * of adoption and assert that it stays there.
+ */
+function orphan(
+  overrides: Partial<FakeEvent> & { eventId: number },
+): FakeEvent {
+  return {
+    athleteId: ATHLETE_ID,
+    name: RIDE.name,
+    type: 'ACTIVITY',
+    startDate: new Date(RIDE.start_date),
+    endDate: new Date('2026-06-28T21:14:46Z'),
+    createdAt: new Date(Date.now() - 2 * DAY_MS),
+    ...overrides,
+  };
+}
+
 function importSetup(options: {
   /** Replies for `GET /activity/{id}/streams`, one per call. */
   streamReplies: (unknown | Error)[];
@@ -290,35 +329,41 @@ function importSetup(options: {
 
   const eventTable = {
     findFirst: jest.fn(
-      async ({ where }: { where: { startDate: Date; athleteId: number } }) =>
+      async ({ where }: { where: FakeEventWhere }) =>
         events.find(
           (event) =>
-            event.athleteId === where.athleteId &&
-            event.startDate.getTime() === where.startDate.getTime() &&
+            (where.athleteId === undefined ||
+              event.athleteId === where.athleteId) &&
+            (where.type === undefined || event.type === where.type) &&
+            (where.name === undefined || event.name === where.name) &&
+            (where.startDate === undefined ||
+              event.startDate.getTime() === where.startDate.getTime()) &&
+            (where.endDate === undefined ||
+              event.endDate.getTime() === where.endDate.getTime()) &&
+            (where.createdAt === undefined ||
+              (event.createdAt >= where.createdAt.gte &&
+                event.createdAt <= where.createdAt.lte)) &&
+            // `activity: { is: null }`
             !activities.some((a) => a.eventId === event.eventId),
         ) ?? null,
     ),
-    create: jest.fn(async ({ data }: { data: Omit<FakeEvent, 'eventId'> }) => {
-      const event = { eventId: ++nextEventId, ...data };
-      events.push(event);
-      return event;
-    }),
-    update: jest.fn(
-      async ({
-        where,
-        data,
-      }: {
-        where: { eventId: number };
-        data: Partial<FakeEvent>;
-      }) => {
-        const event = events.find((e) => e.eventId === where.eventId);
-        if (!event) {
-          throw new Error(`No event ${where.eventId}`);
-        }
-        Object.assign(event, data);
+    create: jest.fn(
+      async ({ data }: { data: Omit<FakeEvent, 'eventId' | 'createdAt'> }) => {
+        const event = {
+          eventId: ++nextEventId,
+          createdAt: new Date(),
+          ...data,
+        };
+        events.push(event);
         return event;
       },
     ),
+    // Adoption no longer rewrites the row it takes: matching on name and end
+    // date is exactly what made the row safe to take in the first place. A call
+    // here means that reasoning has been broken.
+    update: jest.fn(() => {
+      throw new Error('resolveEvent must not update the event it adopts');
+    }),
   };
 
   const eventActivityTable = {
@@ -445,16 +490,7 @@ describe('IntervalsIcuProviderService.importActivity', () => {
   it('adopts an event orphaned by an earlier attempt instead of duplicating it', async () => {
     const { service, events, activities } = importSetup({
       streamReplies: [WATTS_STREAM],
-      seedEvents: [
-        {
-          eventId: 77,
-          athleteId: ATHLETE_ID,
-          // Stale leftovers from whatever the abandoned attempt wrote.
-          name: 'Some other ride',
-          startDate: new Date(RIDE.start_date),
-          endDate: new Date('2026-06-28T20:00:00Z'),
-        },
-      ],
+      seedEvents: [orphan({ eventId: 77 })],
     });
 
     await service.importActivity(ACCOUNT, IMPORTED);
@@ -462,10 +498,80 @@ describe('IntervalsIcuProviderService.importActivity', () => {
     expect(events).toHaveLength(1);
     expect(events[0].eventId).toBe(77);
     expect(activities[0].eventId).toBe(77);
-    // The adopted row describes the activity now attached to it, not the one
-    // the abandoned attempt was working on.
-    expect(events[0].name).toBe(RIDE.name);
-    expect(events[0].endDate).toEqual(IMPORTED.endDate);
+  });
+
+  /**
+   * The reason adoption is not simply "an activity-less ACTIVITY event at this
+   * start time".
+   *
+   * Strava, Garmin, Polar and Suunto all still create their `Event` and their
+   * `EventActivity` in two statements with a network call in between — Strava
+   * allows 45 seconds for a stream fetch alone. Throughout that call their
+   * event is activity-less and looks exactly like wreckage. And because
+   * Intervals.icu is an aggregator that pulls from those same platforms, the
+   * two rows for one ride can agree on every field there is.
+   *
+   * Taking it would hang this activity off Strava's event and then collide with
+   * Strava's own insert: one activity attached to the wrong event, another lost
+   * outright, across two providers. The age floor is what stops it, since a row
+   * that young cannot be the leftovers of anything.
+   */
+  it('does not adopt an event another provider is still writing', async () => {
+    const inFlight = orphan({
+      eventId: 77,
+      // Not a stale copy — the row another provider created seconds ago and is
+      // about to attach its own activity to.
+      createdAt: new Date(),
+    });
+
+    const { service, events, activities } = importSetup({
+      streamReplies: [WATTS_STREAM],
+      seedEvents: [inFlight],
+    });
+
+    await service.importActivity(ACCOUNT, IMPORTED);
+
+    // A second event, not a stolen one, and the other provider's row is still
+    // free for the activity it is waiting on.
+    expect(events).toHaveLength(2);
+    expect(activities[0].eventId).not.toBe(77);
+    expect(activities.some((a) => a.eventId === 77)).toBe(false);
+  });
+
+  it('does not adopt an event that merely starts at the same time', async () => {
+    const { service, events, activities } = importSetup({
+      streamReplies: [WATTS_STREAM],
+      seedEvents: [
+        orphan({
+          eventId: 77,
+          // Another provider's naming and its own idea of when the ride ended.
+          name: 'Morning Ride',
+          endDate: new Date('2026-06-28T20:00:00Z'),
+        }),
+      ],
+    });
+
+    await service.importActivity(ACCOUNT, IMPORTED);
+
+    expect(events).toHaveLength(2);
+    expect(activities[0].eventId).not.toBe(77);
+  });
+
+  it('does not adopt an event older than the wreckage window', async () => {
+    const { service, events, activities } = importSetup({
+      streamReplies: [WATTS_STREAM],
+      seedEvents: [
+        orphan({
+          eventId: 77,
+          createdAt: new Date(Date.now() - 90 * DAY_MS),
+        }),
+      ],
+    });
+
+    await service.importActivity(ACCOUNT, IMPORTED);
+
+    expect(events).toHaveLength(2);
+    expect(activities[0].eventId).not.toBe(77);
   });
 
   it('repeated failed attempts never accumulate events', async () => {
