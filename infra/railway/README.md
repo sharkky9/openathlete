@@ -73,9 +73,14 @@ every deployment migrates the database it is pointed at. No manual step is requi
 
 ## Pull request previews
 
-PR environments are enabled on the `staging` environment, so previews inherit staging (non-production)
-variables and get their own Postgres and Redis instances. Production variables are never exposed to a
-preview. Railway destroys the environment when the PR is merged or closed.
+PR environments are enabled on the `staging` environment, so previews inherit staging's variables and
+get their own Postgres and Redis instances. Railway destroys the environment when the PR is merged or
+closed.
+
+Inheriting from `staging` is not by itself a guarantee that a preview holds no production
+credential — it only means the preview gets whatever `staging` holds, and `staging` was duplicated
+from `production` (issue #47). The invariant is enforced separately, by the
+`Railway purge non-production secrets` workflow; see `OPERATIONS.md`.
 
 ## Related docs
 

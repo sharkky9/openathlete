@@ -7,13 +7,13 @@ OpenAthlete provides a RESTful API for programmatic access to your data.
 
 ## Interactive API Documentation
 
-The complete and interactive API documentation is available via Swagger UI:
+Interactive Swagger UI is served at `/docs` on non-production instances only —
+run the API locally (or point at a staging deployment) to explore all endpoints,
+try requests, and view schemas:
 
-<Card
-  title="Open API Documentation"
-  href="https://api.openathlete.org/docs"
-  description="Explore all endpoints, try requests, and view schemas"
-/>
+```
+http://localhost:3000/docs
+```
 
 ## Base URL
 
@@ -58,16 +58,29 @@ curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
 
 ## Rate Limiting
 
-API requests are rate-limited to ensure fair usage:
+The unauthenticated endpoints are rate-limited per client IP address, over a
+rolling 60-second window:
 
-- **100 requests per minute** per user
-- **1000 requests per hour** per user
+| Endpoint                     | Limit          |
+| ---------------------------- | -------------- |
+| `POST /auth/login`           | 10 per minute  |
+| `POST /auth/firebase`        | 10 per minute  |
+| `POST /auth/refresh-token`   | 20 per minute  |
+| `GET /auth/invitation`       | 10 per minute  |
+| `GET /auth/email-exists`     | 5 per minute   |
+| `POST /user`                 | 5 per minute   |
+| `POST /user/password-reset`  | 5 per minute   |
+| `POST /user/password-reset/request` | 5 per minute |
 
-Rate limit headers are included in responses:
+Exceeding a limit returns `429 Too Many Requests`. Authenticated endpoints are
+not currently throttled.
 
-- `X-RateLimit-Limit` - Request limit
-- `X-RateLimit-Remaining` - Remaining requests
-- `X-RateLimit-Reset` - Reset time
+Throttled endpoints include rate limit headers in their responses:
+
+- `X-RateLimit-Limit` - Request limit for the window
+- `X-RateLimit-Remaining` - Remaining requests in the window
+- `X-RateLimit-Reset` - Seconds until the window resets
+- `Retry-After` - Seconds to wait, sent only on a `429` response
 
 ## Error Handling
 
@@ -89,8 +102,11 @@ Errors are returned in a consistent format:
 - `401` - Unauthorized
 - `403` - Forbidden
 - `404` - Not Found
+- `410` - Gone (endpoint permanently removed)
+- `429` - Too Many Requests (rate limit exceeded)
 - `500` - Internal Server Error
 
 ## OpenAPI Specification
 
-A complete OpenAPI specification is available at [https://api.openathlete.org/docs](https://api.openathlete.org/docs) for the production API, or at `/api/docs` when running the API server locally.
+A complete OpenAPI specification is available at `/docs` on any non-production
+instance, including a local API server. It is not exposed in production.

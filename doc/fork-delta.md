@@ -8,7 +8,8 @@ Last reconciled against upstream `main` at `64a660bb`.
 
 Files this fork adds in its own directories (`infra/railway/**`, `doc/fork-*.md`,
 `doc/merge-policy.md`, `.github/workflows/auto-merge.yml`, `.github/workflows/checks.yml`,
-`.github/workflows/tests.yml`, `.github/workflows/deployment-smoke.yml`) cannot conflict and are
+`.github/workflows/tests.yml`, `.github/workflows/deployment-smoke.yml`,
+`.github/workflows/railway-purge-nonprod-secrets.yml`) cannot conflict and are
 described below only where their behaviour matters during an upgrade.
 
 ## Railway deployment configuration
@@ -27,6 +28,52 @@ described below only where their behaviour matters during an upgrade.
 
 **Upgrade test:** `Deployment smoke test` workflow; then deploy the upgrade branch to a staging
 Railway environment and check the API, web and backup services boot.
+
+## Railway non-production credential purge
+
+**Reason:** `staging` was created by duplicating `production`, which copies every variable verbatim,
+and the "replace every secret" half of that step was never done. Staging and every PR preview built
+from it therefore held byte-identical copies of the live production third-party credentials
+(issue #47). Because they are copies of live secrets they cannot be rotated in place — they have to
+be deleted. Merged PR #44 made every third-party credential optional at boot, so deleting them only
+makes the corresponding feature go dark. Railway exposes no built-in way to assert "this environment
+holds no production credential", so the fork automates it.
+
+**Implementation:** `.github/workflows/railway-purge-nonprod-secrets.yml` (a `workflow_dispatch`-only
+job, `permissions: contents: read`, inputs `dry_run` defaulting to **true** and `environments`
+defaulting to `staging`, guarded by a `RAILWAY_TOKEN` presence check) and
+`infra/railway/purge-nonprod-secrets.mjs` (dependency-free ESM, global `fetch`, Node 22 — so the job
+skips `./.github/actions/setup` and never runs `pnpm install`). The script drives Railway's public
+GraphQL API at `https://backboard.railway.com/graphql/v2`, deleting exactly seven variables
+(`BREVO_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `STRAVA_CLIENT_SECRET`,
+`STRAVA_WEBHOOK_TOKEN`, `POLAR_CLIENT_SECRET`, `POLAR_WEBHOOK_SECRET_KEY`) from every service scope
+and the shared/project scope of each target environment, then re-queries and prints a `PASS`/`FAIL`
+verdict, exiting non-zero if any survived. Two guards are compiled into the script and are
+unreachable from the workflow inputs: `production`/`prod`/`prd` aborts the whole run (checked once
+on the requested names before authenticating and again on the names Railway returns), and deletion
+requires an exact hit on the seven-name allow-list *and* a miss against an `INTERVALS_ICU` prefix
+deny-list, both re-asserted immediately before each delete call. It logs variable **names** only,
+never values, because the job log is the audit record and the `Secret scan` check treats these as
+live credentials; it is idempotent, so deleting an already-absent variable is a logged no-op rather
+than an error. `infra/railway/OPERATIONS.md` documents the dispatch procedure and the
+dry-run-first convention; the same commit corrects that file's claim that previews "never see
+production credentials" and its pre-PR-#44 description of which variables are required.
+
+**Upstream modifications:** none — both files are new and live in fork-owned paths.
+
+**Upstream candidate:** no — upstream does not deploy to Railway, and the seven variable names are
+this fork's deployment concern rather than application behaviour.
+
+**Removal condition:** the fork stops deploying to Railway, or non-production environments stop
+being duplicated from production (for example if `staging` is rebuilt from scratch with its own
+sandbox credentials) *and* something else enforces the invariant continuously.
+
+**Upgrade test:** `node --check infra/railway/purge-nonprod-secrets.mjs`, then dispatch the workflow
+with `dry_run = true` against `staging` and confirm it reports the plan and exits 0 without changing
+anything. If upstream ever adds a third-party credential to
+`libs/shared/src/types/config/environments/api.environment.ts`, decide whether it belongs on the
+allow-list in the script — the list is deliberately explicit, so a new credential is *not* purged
+until it is added by hand.
 
 ## Upstream Scaleway deploy workflow disabled
 

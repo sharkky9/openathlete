@@ -37,7 +37,7 @@ import { Language } from 'src/common/constants/languages.constant';
 
 import { JwtUser } from '../decorators';
 import { AuthUser } from '../decorators/user.decorator';
-import { UserTypeGuard } from '../guards';
+import { Throttle, ThrottleGuard, UserTypeGuard } from '../guards';
 import { UserService } from '../services';
 
 @ApiTags('User')
@@ -45,7 +45,13 @@ import { UserService } from '../services';
 export class UserController {
   constructor(private userService: UserService) {}
 
+  // The three routes below are the only unauthenticated ones on this controller.
+  // Each of them sends mail or writes a row on behalf of an anonymous caller, so
+  // they are throttled per IP. Authenticated routes are deliberately left alone:
+  // they are already gated by a bearer token and are called in normal app use.
   @Post()
+  @UseGuards(ThrottleGuard)
+  @Throttle({ limit: 5, windowMs: 60_000 })
   @ApiOperation({
     summary: 'Create a new user account',
     description:
@@ -290,6 +296,8 @@ export class UserController {
   }
 
   @Post('password-reset/request')
+  @UseGuards(ThrottleGuard)
+  @Throttle({ limit: 5, windowMs: 60_000 })
   @ApiOperation({
     summary: 'Request password reset',
     description:
@@ -335,6 +343,8 @@ export class UserController {
   }
 
   @Post('password-reset')
+  @UseGuards(ThrottleGuard)
+  @Throttle({ limit: 5, windowMs: 60_000 })
   @ApiOperation({
     summary: 'Reset password with token',
     description:

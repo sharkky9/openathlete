@@ -8,7 +8,7 @@ import { ApiEnvSchemaType } from '@openathlete/shared';
 import { PrismaService } from '../prisma/services/prisma.service';
 import { SubscriptionModule } from '../subscription';
 import { AuthController, UserController } from './controllers';
-import { UserTypeGuard } from './guards';
+import { ThrottleGuard, UserTypeGuard } from './guards';
 import { AuthService, CaslAbilityFactory, UserService } from './services';
 import { AthleteInvitationService } from './services/athlete-invitation.service';
 import { CoachInvitationService } from './services/coach-invitation.service';
@@ -40,6 +40,9 @@ import { JwtStrategy } from './strategies';
     JwtStrategy,
     CaslAbilityFactory,
     UserTypeGuard,
+    // Registered so both controllers share one instance, and therefore one set
+    // of rate limit counters.
+    ThrottleGuard,
     PrismaService,
   ],
   exports: [
