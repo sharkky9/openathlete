@@ -1,6 +1,14 @@
 import { ZodValidationPipe } from 'nestjs-zod';
 
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  GoneException,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBody,
   ApiOperation,
@@ -19,19 +27,29 @@ import {
   refreshTokenDtoSchema,
 } from '@openathlete/shared';
 
-import { AuthService, UserService } from '../services';
+import { Throttle, ThrottleGuard } from '../guards';
+import { AuthService } from '../services';
 import { InvitationService } from '../services/invitation.service';
 
+// Every route here is unauthenticated, so throttling is the only thing standing
+// between an attacker and unlimited credential stuffing / token brute-forcing.
+// The guard is applied per-controller rather than globally on purpose: a global
+// APP_GUARD would also cover provider webhooks, which burst legitimately.
 @ApiTags('Auth')
 @Controller('auth')
+@UseGuards(ThrottleGuard)
 export class AuthController {
+  // UserService is no longer injected: `GET /auth/email-exists` was its only
+  // consumer here and is now neutralized, and an unread property fails
+  // `noUnusedLocals`. The route itself stays — that is what fork maintenance
+  // requires, not the dependency behind it.
   constructor(
     private authService: AuthService,
-    private userService: UserService,
     private invitationService: InvitationService,
   ) {}
 
   @Post('login')
+  @Throttle({ limit: 10, windowMs: 60_000 })
   @ApiOperation({
     summary: 'Authenticate user with email and password',
     description:
@@ -88,6 +106,7 @@ export class AuthController {
   }
 
   @Post('firebase')
+  @Throttle({ limit: 10, windowMs: 60_000 })
   @ApiOperation({
     summary: 'Authenticate user with Firebase OAuth (ID token exchange)',
     description:
@@ -100,6 +119,7 @@ export class AuthController {
   }
 
   @Post('refresh-token')
+  @Throttle({ limit: 20, windowMs: 60_000 })
   @ApiOperation({
     summary: 'Refresh access token using refresh token',
     description:
@@ -151,35 +171,44 @@ export class AuthController {
     return this.authService.refresh(body.refreshToken);
   }
 
+  // Neutralized: this route let anyone confirm whether an address has an account
+  // here, one request at a time, with no authentication (issue #41). Nothing
+  // needs it — account creation already rejects duplicates with a 409, which is
+  // the only place the answer is actually required and is scoped to a caller who
+  // is submitting that address anyway. The route is kept (and made to fail
+  // loudly with 410 rather than lie with `false`) because this is a fork:
+  // deleting an upstream endpoint produces a modify/delete conflict on every
+  // future upstream merge — see doc/fork-maintenance.md.
   @Get('email-exists')
+  @Throttle({ limit: 5, windowMs: 60_000 })
   @ApiOperation({
-    summary: 'Check if an email address is already registered',
+    summary: 'Removed - check if an email address is already registered',
+    deprecated: true,
     description:
-      'Verifies whether a given email address is already associated with an existing user account. Useful for registration forms to prevent duplicate accounts.',
+      'Permanently removed: this endpoint allowed unauthenticated user enumeration. Account creation (POST /user) already returns 409 Conflict for an address that is taken, which covers the legitimate use case.',
   })
   @ApiQuery({
     name: 'email',
     type: String,
-    description: 'Email address to check',
+    description: 'Ignored - the email is never read',
     example: 'user@example.com',
-    required: true,
+    required: false,
   })
   @ApiResponse({
-    status: 200,
-    description: 'Email existence check result',
-    schema: {
-      type: 'boolean',
-      example: true,
-      description: 'true if email exists, false otherwise',
-    },
+    status: 410,
+    description:
+      'Gone - endpoint permanently removed, use the 409 from POST /user instead',
   })
-  async emailExists(@Query('email') email: string) {
-    return this.userService.exists({
-      email,
-    });
+  async emailExists() {
+    throw new GoneException(
+      'This endpoint has been removed. Account creation returns 409 Conflict when the email is already registered.',
+    );
   }
 
   @Get('invitation')
+  // The response echoes back the invitation's email address, so an unthrottled
+  // caller could mine addresses by guessing tokens (issue #41).
+  @Throttle({ limit: 10, windowMs: 60_000 })
   @ApiOperation({
     summary: 'Verify invitation token validity',
     description:

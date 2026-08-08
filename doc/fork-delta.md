@@ -8,7 +8,8 @@ Last reconciled against upstream `main` at `64a660bb`.
 
 Files this fork adds in its own directories (`infra/railway/**`, `doc/fork-*.md`,
 `doc/merge-policy.md`, `.github/workflows/auto-merge.yml`, `.github/workflows/checks.yml`,
-`.github/workflows/tests.yml`, `.github/workflows/deployment-smoke.yml`) cannot conflict and are
+`.github/workflows/tests.yml`, `.github/workflows/deployment-smoke.yml`,
+`.github/workflows/railway-purge-nonprod-secrets.yml`) cannot conflict and are
 described below only where their behaviour matters during an upgrade.
 
 ## Railway deployment configuration
@@ -27,6 +28,52 @@ described below only where their behaviour matters during an upgrade.
 
 **Upgrade test:** `Deployment smoke test` workflow; then deploy the upgrade branch to a staging
 Railway environment and check the API, web and backup services boot.
+
+## Railway non-production credential purge
+
+**Reason:** `staging` was created by duplicating `production`, which copies every variable verbatim,
+and the "replace every secret" half of that step was never done. Staging and every PR preview built
+from it therefore held byte-identical copies of the live production third-party credentials
+(issue #47). Because they are copies of live secrets they cannot be rotated in place — they have to
+be deleted. Merged PR #44 made every third-party credential optional at boot, so deleting them only
+makes the corresponding feature go dark. Railway exposes no built-in way to assert "this environment
+holds no production credential", so the fork automates it.
+
+**Implementation:** `.github/workflows/railway-purge-nonprod-secrets.yml` (a `workflow_dispatch`-only
+job, `permissions: contents: read`, inputs `dry_run` defaulting to **true** and `environments`
+defaulting to `staging`, guarded by a `RAILWAY_TOKEN` presence check) and
+`infra/railway/purge-nonprod-secrets.mjs` (dependency-free ESM, global `fetch`, Node 22 — so the job
+skips `./.github/actions/setup` and never runs `pnpm install`). The script drives Railway's public
+GraphQL API at `https://backboard.railway.com/graphql/v2`, deleting exactly seven variables
+(`BREVO_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `STRAVA_CLIENT_SECRET`,
+`STRAVA_WEBHOOK_TOKEN`, `POLAR_CLIENT_SECRET`, `POLAR_WEBHOOK_SECRET_KEY`) from every service scope
+and the shared/project scope of each target environment, then re-queries and prints a `PASS`/`FAIL`
+verdict, exiting non-zero if any survived. Two guards are compiled into the script and are
+unreachable from the workflow inputs: `production`/`prod`/`prd` aborts the whole run (checked once
+on the requested names before authenticating and again on the names Railway returns), and deletion
+requires an exact hit on the seven-name allow-list *and* a miss against an `INTERVALS_ICU` prefix
+deny-list, both re-asserted immediately before each delete call. It logs variable **names** only,
+never values, because the job log is the audit record and the `Secret scan` check treats these as
+live credentials; it is idempotent, so deleting an already-absent variable is a logged no-op rather
+than an error. `infra/railway/OPERATIONS.md` documents the dispatch procedure and the
+dry-run-first convention; the same commit corrects that file's claim that previews "never see
+production credentials" and its pre-PR-#44 description of which variables are required.
+
+**Upstream modifications:** none — both files are new and live in fork-owned paths.
+
+**Upstream candidate:** no — upstream does not deploy to Railway, and the seven variable names are
+this fork's deployment concern rather than application behaviour.
+
+**Removal condition:** the fork stops deploying to Railway, or non-production environments stop
+being duplicated from production (for example if `staging` is rebuilt from scratch with its own
+sandbox credentials) *and* something else enforces the invariant continuously.
+
+**Upgrade test:** `node --check infra/railway/purge-nonprod-secrets.mjs`, then dispatch the workflow
+with `dry_run = true` against `staging` and confirm it reports the plan and exits 0 without changing
+anything. If upstream ever adds a third-party credential to
+`libs/shared/src/types/config/environments/api.environment.ts`, decide whether it belongs on the
+allow-list in the script — the list is deliberately explicit, so a new credential is *not* purged
+until it is added by hand.
 
 ## Upstream Scaleway deploy workflow and Terraform stack deleted
 
@@ -533,3 +580,170 @@ export endpoint) — the claim then becomes true and the wording can go back.
 adapter, and search the API for an export endpoint before restoring any "full export" wording. Then
 `pnpm format` and `pnpm website build`; `apps/website/messages/{en,fr}.json` must keep identical key
 sets or the Paraglide build fails.
+
+## Unauthenticated API surface hardened
+
+**Reason:** issue #41. Three separate holes on the routes that need no credentials. Nothing bounded
+request rate anywhere in the API, so `POST /auth/login`, `POST /auth/firebase` and
+`POST /auth/refresh-token` accepted unlimited credential stuffing and token guessing, and
+`POST /user`, `POST /user/password-reset/request` and `POST /user/password-reset` let an anonymous
+caller send mail or write rows as fast as they could ask. `GET /auth/email-exists` answered, for any
+address, whether it had an account here — unauthenticated user enumeration, one request at a time.
+Swagger UI was mounted unconditionally at `/docs`, so production published a complete map of every
+route, payload shape and auth requirement. Separately, `apps/docs` documented rate limits
+(100/minute, 1000/hour, `X-RateLimit-*` headers) that were pure fiction: no throttling of any kind
+existed in the tree.
+
+**Implementation:** `apps/api/src/modules/auth/guards/throttle.guard.ts` (new, fork-owned) is a
+fixed-window per-client limiter with an opt-in `@Throttle({ limit, windowMs })` decorator built on
+`Reflector.createDecorator`, matching `UserTypes` next door; an untagged handler is never throttled,
+so applying the guard to a controller cannot silently start rejecting traffic on a route nobody
+reviewed. Buckets are keyed on client IP *and* `Class.handler`, so a login burst cannot exhaust the
+password-reset budget; the client comes from `req.ip`, the address Express itself resolved from
+`X-Forwarded-For` (see the trust-proxy note below — the guard does no header parsing of its own, and
+reads it through `resolveClientIp` in `apps/api/src/common/utils/client-ip.util.ts` so the
+resolution strategy can change without touching the guard). Counters live in this process, correct
+only while the API runs `numReplicas: 1` — see
+`infra/railway/api.railway.json`; scaling out multiplies every limit by the replica count and needs
+shared storage first. The map is swept of expired windows at most once every 30s and hard-capped at
+`MAX_TRACKED_CLIENTS = 10_000` with insertion-ordered eviction, so a flood from rotating source
+addresses degrades the limit instead of exhausting memory. Allowed responses carry
+`X-RateLimit-Limit` / `-Remaining` / `-Reset`; a rejection is `429` plus `Retry-After`.
+
+It is hand-rolled rather than `@nestjs/throttler` for one reason, and it is an environment
+constraint rather than a technical judgement: the session that wrote it commits through the GitHub
+API with file contents inline, and `pnpm-lock.yaml` is ~785KB, so no lockfile change could land and
+therefore no dependency could be added. `@nestjs/throttler` is the right answer and this guard is a
+stopgap standing in for it.
+
+`AuthController` carries `@UseGuards(ThrottleGuard)` at the class level (deliberately not a global
+`APP_GUARD`, which would also cover provider webhooks that burst legitimately) with per-route limits
+of 10/min on `login`, `firebase` and `invitation`, 20/min on `refresh-token` and 5/min on
+`email-exists`; `UserController` applies the guard on its three unauthenticated routes only, 5/min
+each, leaving token-gated routes alone. `ThrottleGuard` is registered as a provider in
+`auth.module.ts` so both controllers share one instance and therefore one set of counters, and is
+re-exported from `guards/index.ts`. `UserService` was dropped from `AuthController`'s constructor:
+`email-exists` was its only consumer there and `noUnusedLocals` fails on an unread property.
+
+`GET /auth/email-exists` is **neutralized in place, not deleted** — it throws `GoneException` (410)
+without reading the query parameter, and its Swagger annotations say so. Deleting it was the obvious
+move and was rejected on fork-maintenance grounds: `doc/fork-maintenance.md` warns that deleting an
+upstream file or route produces a modify/delete conflict every time upstream touches it, so the
+route stays and fails loudly rather than lying with a hardcoded `false`. The legitimate use case is
+already covered by the `409` that account creation returns for a taken address.
+
+`main.ts` mounts Swagger only when `configService.get('ENV') !== ENV.PROD` — gated on the app's own
+`ENV` rather than `NODE_ENV`, because staging and the deployment smoke test also run production
+builds — and calls `configureTrustProxy(app)` from
+`apps/api/src/common/utils/client-ip.util.ts` so Express can resolve the real client behind
+Railway's TLS terminator.
+
+That helper sets `trust proxy: true` — **every hop trusted**, so `req.ip` is the *leftmost*
+`X-Forwarded-For` entry. Railway's edge discards any client-supplied `X-Forwarded-For` and writes
+the real client address itself, after which one or more internal hops may append their own, so the
+app sees `<client>` or `<client>, <hop>[, <hop>…]` and the leftmost entry is always the real client
+however many hops Railway adds.
+
+Two narrower settings were tried first and **both failed in production**:
+
+- `set('trust proxy', 1)` — a hop *count*. Express walks the header from the right and skips exactly
+  that many entries, so it returned *Railway's internal hop* as the client — an address that differs
+  per edge node, so one caller was split across several buckets while every caller behind a given
+  edge node shared one 10/min bucket. The limiter was a global lockout switch, the exact failure
+  `throttle.guard.spec.ts` says it exists to prevent. (Under `trust proxy: 1` Express's `req.ips`
+  holds at most one entry and always equals `req.ip`, so the earlier claim that `req.ips[0]` was the
+  original client was simply false — it was the proxy hop, and the `ips[0] ?? ip` fallback in the
+  guard was a no-op.)
+- `['loopback', 'linklocal', 'uniquelocal', '100.64.0.0/10']` — an address *list*, on a
+  community-sourced belief that Railway's internal hop sits in the CGNAT range. **Tested live
+  against the redeployed PR-58 preview and it failed**: 100 sequential `POST /auth/login` requests
+  against the 10/60s limit gave 50 non-429s and 50 `429`s, with `x-ratelimit-remaining` resetting to
+  9 for each of five distinct `x-hikari-trace` values and each trace independently allowing exactly
+  10 — bucketing unchanged from before the fix. Railway's hop is therefore not in `100.64.0.0/10`
+  nor any other listed range, so `proxy-addr` stopped at that hop and returned it as the client. An
+  address list cannot be written correctly against a hop address Railway does not document and that
+  cannot be observed from outside the platform.
+
+**The precondition, and it is not optional:** `trust proxy: true` is sound only because a proxy that
+*strips* the inbound `X-Forwarded-For` sits in front. Railway confirmed it does — staff, verbatim:
+"We do strip X-Forwarded-For at our edge and ensure clients cannot overwrite it." Expose this API
+directly, put a proxy in front that forwards the caller's header instead of replacing it, or add an
+ingress path that bypasses the edge, and any caller can send a fresh `X-Forwarded-For` per request,
+mint a new throttle bucket each time and make unlimited requests — the limiter is not degraded, it
+is gone. The limiter's correctness is a property of the deployment topology, not of the code. If
+that edge ever goes away, the fallback is keying on Railway's `X-Real-IP`, a change to
+`client-ip.util.ts` alone.
+
+`apps/docs/content/docs/api/index.mdx` replaces the invented limits with the eight real per-route
+numbers, states that authenticated endpoints are not throttled, documents `Retry-After` alongside
+the `X-RateLimit-*` headers, adds `410` and `429` to the status list, and stops pointing readers at
+`https://api.openathlete.org/docs` for Swagger now that production does not serve it.
+
+`apps/api/package.json`'s Jest block gained a `moduleNameMapper` for the `src/*` path alias and an
+explicit `tsconfig: <rootDir>/../tsconfig.json` for `ts-jest`. `rootDir` is `src`, which holds no
+tsconfig, so ts-jest was falling back to its own defaults — without `emitDecoratorMetadata` from
+`apps/api/tsconfig.json`, Nest cannot resolve a controller's constructor dependencies in a test.
+
+**Upstream modifications:** `apps/api/src/main.ts`,
+`apps/api/src/modules/auth/auth.module.ts`,
+`apps/api/src/modules/auth/controllers/auth.controller.ts`,
+`apps/api/src/modules/auth/controllers/user.controller.ts`,
+`apps/api/src/modules/auth/guards/index.ts` (two added exports),
+`apps/api/package.json` (Jest block only),
+`apps/docs/content/docs/api/index.mdx`. The guard, the client-IP util and the three specs
+(`guards/throttle.guard.ts`, `guards/throttle.guard.spec.ts`,
+`guards/throttle.guard.trust-proxy.spec.ts`, `common/utils/client-ip.util.ts`,
+`controllers/auth.controller.spec.ts`) are added files in upstream-owned directories, so they cannot
+conflict. No upstream file is deleted.
+
+**Upstream candidate:** partly. The `email-exists` retirement and the production Swagger gate are
+both plain security fixes with no fork-specific behaviour and should be proposed upstream — though
+upstream, not being a fork, can simply delete the route rather than 410 it, and would want the
+trust-proxy setting made configurable rather than assuming every deployment sits behind a
+header-stripping edge the way this fork's Railway one does. The `apps/docs`
+correction goes with them: it documents upstream's API and is wrong today regardless of this fork.
+The guard itself is **not** an upstream candidate — upstream should add `@nestjs/throttler`, which it can do
+because it can change its own lockfile.
+
+**Removal condition:** for the guard, as soon as a `pnpm-lock.yaml` change can land in this fork:
+add `@nestjs/throttler`, replace `ThrottleGuard`/`Throttle` with `ThrottlerGuard`/`@Throttle`,
+delete `throttle.guard.ts` and `throttle.guard.spec.ts`, and keep the per-route limits, the
+`configureTrustProxy` call and `throttle.guard.trust-proxy.spec.ts` (retargeted at whatever guard
+replaces this one — the resolution it pins is Express's, not the guard's). Do not carry this guard
+past that point — it is single-process, and the
+replica-count caveat above becomes a live bug the first time the API scales out. For the rest: drop
+the `email-exists` and Swagger parts once upstream ships equivalents, and the `apps/docs` table once
+upstream documents real limits. The Jest config lines go when upstream configures ts-jest itself.
+
+**Upgrade test:** `pnpm api test`. Three specs pin this delta.
+`apps/api/src/modules/auth/guards/throttle.guard.spec.ts` asserts the guard's own contract: untagged
+handlers pass unthrottled, the `limit + 1`-th request is `429` with a positive `Retry-After`, the
+limit/remaining/reset headers are set, budgets are separate per handler and per client address, the
+budget returns after the window rolls over, and the tracked-client map stays at or under
+`MAX_TRACKED_CLIENTS` under an address-rotating flood of 10,500 distinct IPs. It builds its requests
+by hand, so it says nothing about which address ends up in `req.ip` — that gap is why the hop-count
+bug shipped green.
+
+`apps/api/src/modules/auth/guards/throttle.guard.trust-proxy.spec.ts` closes it. It boots a real
+Nest-over-Express app, configures it through the same `configureTrustProxy` helper `main.ts` uses
+(imported, not copied, so the test and the app cannot drift), and drives it over real HTTP: headers
+with zero, one, two and three appended hops all resolve to the leftmost, edge-written client; two
+requests differing only in the appended internal hop land in the *same* bucket while two different
+real clients behind the same hop land in *different* ones; and a burst mixing several hop addresses
+still yields exactly `limit` non-429s. It also pins the cost of trusting every hop rather than
+pretending it away: a caller-supplied leftmost entry *is* believed, and the test says in as many
+words that this is safe only behind the stripping edge and is the reason the setting is what it is.
+Reverting `configureTrustProxy` to the `['loopback', 'linklocal', 'uniquelocal', '100.64.0.0/10']`
+address list fails five of its eight cases.
+
+`apps/api/src/modules/auth/controllers/auth.controller.spec.ts` boots
+the real controller through `@nestjs/testing` and asserts the wiring: a 100-request burst at
+`POST /auth/login` yields exactly 10 non-429s followed by 90 `429`s *and* reaches `AuthService.login`
+exactly 10 times (a guard that counted but did not reject would pass a status-only check), the
+budget is restored after the window, and `GET /auth/email-exists` answers `410` without calling
+`UserService.exists` (a handler returning a hardcoded `false` would pass a status check while still
+burning a lookup). That spec imports the controller before the services on purpose — the auth barrel
+has an import cycle and entering through a service leaves `AuthService` undefined in
+`design:paramtypes`; if it starts failing to resolve `AuthService` after an upgrade, check the import
+order before anything else. Then, by hand: boot with `ENV=production` and confirm `/docs` 404s, boot
+with `ENV=development` and confirm it serves.
