@@ -66,11 +66,6 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
         icon: User,
         spaces: ['COACH'] as UserRole[],
         items: [
-          // {
-          //   title: m.summary(),
-          //   url: getPath(['dashboard', 'summary']) + `/${athlete.athleteId}`,
-          //   icon: FileText,
-          // },
           {
             title: m.calendar(),
             url: getPath(['dashboard', 'calendar']) + `/${athlete.athleteId}`,
