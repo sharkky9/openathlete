@@ -87,29 +87,12 @@ export function MessagesPage() {
   const deleteThreadMutation = deleteMessageThreadMutation;
   const isStreaming = false;
 
-  // Auto-create first thread if none exist
-  useEffect(() => {
-    if (
-      threads &&
-      threads.length === 0 &&
-      !isLoading &&
-      !createMessageThreadMutation.isPending
-    ) {
-      createMessageThreadMutation.mutate(
-        { title: 'New Thread', participantUserIds: [] },
-        {
-          onSuccess: (newThread) => {
-            posthog?.capture(AnalyticsEvent.messages_thread_created, {
-              trigger: 'auto_empty_state',
-              participant_count: 0,
-            });
-            setActiveMessageThreadId(newThread.messageThreadId);
-          },
-        },
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threads, isLoading]);
+  // No thread is auto-created on the empty state. The previous version fired
+  // `createThread` with `participantUserIds: []`, which the API rejects
+  // ("You must include yourself as a participant"), and the only guard was
+  // `threads.length === 0 && !isPending`, so the rejected request re-fired
+  // every time those settled. The empty state now renders
+  // `chatbot_select_or_create` and the user creates a thread explicitly.
 
   useEffect(() => {
     if (!isMobile && threads && threads.length > 0 && !activeId) {
