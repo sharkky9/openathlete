@@ -559,26 +559,40 @@ builds — and calls `configureTrustProxy(app)` from
 `apps/api/src/common/utils/client-ip.util.ts` so Express can resolve the real client behind
 Railway's TLS terminator.
 
-That helper trusts proxies **by address**, not by hop count:
-`['loopback', 'linklocal', 'uniquelocal', '100.64.0.0/10']`. Railway's edge discards any
-client-supplied `X-Forwarded-For` and writes the real client address itself, after which one
-internal hop may append its own, so the app sees `<client>` or `<client>, <internal hop>`. Express
-walks that list from the right and returns the first entry it does not trust. The original
-`set('trust proxy', 1)` therefore skipped exactly one entry and returned *Railway's internal hop* as
-the client — an address that differs per edge node, so one caller was split across several buckets
-while every caller behind a given edge node shared one 10/min bucket. The limiter was a global
-lockout switch, which is the exact failure `throttle.guard.spec.ts` says it exists to prevent. An
-address list also survives Railway adding or dropping a hop, which a count does not. Note that under
-`trust proxy: 1` Express's `req.ips` holds at most one entry and always equals `req.ip`, so the
-earlier claim that `req.ips[0]` was the original client was simply false — it was the proxy hop, and
-the `ips[0] ?? ip` fallback in the guard was a no-op.
+That helper sets `trust proxy: true` — **every hop trusted**, so `req.ip` is the *leftmost*
+`X-Forwarded-For` entry. Railway's edge discards any client-supplied `X-Forwarded-For` and writes
+the real client address itself, after which one or more internal hops may append their own, so the
+app sees `<client>` or `<client>, <hop>[, <hop>…]` and the leftmost entry is always the real client
+however many hops Railway adds.
 
-**Unverified:** `100.64.0.0/10` (CGNAT) as Railway's internal hop range comes from a community
-thread, not Railway documentation, and the hop address cannot be observed from outside the platform.
-If it is wrong, Express falls back to the socket address and the shared-bucket bug returns silently.
-This must be confirmed against a deployed preview: 100 requests to `POST /auth/login` from one
-client should give exactly 10 non-429s followed by 90 `429`s. If it does not, the fallbacks are
-`set('trust proxy', 2)` or keying on Railway's `X-Real-IP`; both are changes to
+Two narrower settings were tried first and **both failed in production**:
+
+- `set('trust proxy', 1)` — a hop *count*. Express walks the header from the right and skips exactly
+  that many entries, so it returned *Railway's internal hop* as the client — an address that differs
+  per edge node, so one caller was split across several buckets while every caller behind a given
+  edge node shared one 10/min bucket. The limiter was a global lockout switch, the exact failure
+  `throttle.guard.spec.ts` says it exists to prevent. (Under `trust proxy: 1` Express's `req.ips`
+  holds at most one entry and always equals `req.ip`, so the earlier claim that `req.ips[0]` was the
+  original client was simply false — it was the proxy hop, and the `ips[0] ?? ip` fallback in the
+  guard was a no-op.)
+- `['loopback', 'linklocal', 'uniquelocal', '100.64.0.0/10']` — an address *list*, on a
+  community-sourced belief that Railway's internal hop sits in the CGNAT range. **Tested live
+  against the redeployed PR-58 preview and it failed**: 100 sequential `POST /auth/login` requests
+  against the 10/60s limit gave 50 non-429s and 50 `429`s, with `x-ratelimit-remaining` resetting to
+  9 for each of five distinct `x-hikari-trace` values and each trace independently allowing exactly
+  10 — bucketing unchanged from before the fix. Railway's hop is therefore not in `100.64.0.0/10`
+  nor any other listed range, so `proxy-addr` stopped at that hop and returned it as the client. An
+  address list cannot be written correctly against a hop address Railway does not document and that
+  cannot be observed from outside the platform.
+
+**The precondition, and it is not optional:** `trust proxy: true` is sound only because a proxy that
+*strips* the inbound `X-Forwarded-For` sits in front. Railway confirmed it does — staff, verbatim:
+"We do strip X-Forwarded-For at our edge and ensure clients cannot overwrite it." Expose this API
+directly, put a proxy in front that forwards the caller's header instead of replacing it, or add an
+ingress path that bypasses the edge, and any caller can send a fresh `X-Forwarded-For` per request,
+mint a new throttle bucket each time and make unlimited requests — the limiter is not degraded, it
+is gone. The limiter's correctness is a property of the deployment topology, not of the code. If
+that edge ever goes away, the fallback is keying on Railway's `X-Real-IP`, a change to
 `client-ip.util.ts` alone.
 
 `apps/docs/content/docs/api/index.mdx` replaces the invented limits with the eight real per-route
@@ -606,7 +620,8 @@ conflict. No upstream file is deleted.
 **Upstream candidate:** partly. The `email-exists` retirement and the production Swagger gate are
 both plain security fixes with no fork-specific behaviour and should be proposed upstream — though
 upstream, not being a fork, can simply delete the route rather than 410 it, and would want the
-trusted-proxy list made configurable rather than hardcoding Railway's ranges. The `apps/docs`
+trust-proxy setting made configurable rather than assuming every deployment sits behind a
+header-stripping edge the way this fork's Railway one does. The `apps/docs`
 correction goes with them: it documents upstream's API and is wrong today regardless of this fork.
 The guard itself is **not** an upstream candidate — upstream should add `@nestjs/throttler`, which it can do
 because it can change its own lockfile.
@@ -632,15 +647,15 @@ bug shipped green.
 
 `apps/api/src/modules/auth/guards/throttle.guard.trust-proxy.spec.ts` closes it. It boots a real
 Nest-over-Express app, configures it through the same `configureTrustProxy` helper `main.ts` uses
-(imported, not copied, so the test and the app cannot drift), and drives it over real HTTP: a
-one-hop and a two-hop `X-Forwarded-For` both resolve to the leftmost, edge-written client; a
-client-prepended `198.51.100.66, <client>, <hop>` resolves to `<client>`, not the prepended value;
-two requests differing only in the appended internal hop land in the *same* bucket while two
-different real clients behind the same hop land in *different* ones; and a burst mixing several hop
-addresses still yields exactly `limit` non-429s. It also pins the known failure mode explicitly — a
-hop from outside the trusted list is treated as the client — so a future regression reads as a
-documented boundary rather than a mystery. Reverting `configureTrustProxy` to `set('trust proxy', 1)`
-fails five of its seven cases.
+(imported, not copied, so the test and the app cannot drift), and drives it over real HTTP: headers
+with zero, one, two and three appended hops all resolve to the leftmost, edge-written client; two
+requests differing only in the appended internal hop land in the *same* bucket while two different
+real clients behind the same hop land in *different* ones; and a burst mixing several hop addresses
+still yields exactly `limit` non-429s. It also pins the cost of trusting every hop rather than
+pretending it away: a caller-supplied leftmost entry *is* believed, and the test says in as many
+words that this is safe only behind the stripping edge and is the reason the setting is what it is.
+Reverting `configureTrustProxy` to the `['loopback', 'linklocal', 'uniquelocal', '100.64.0.0/10']`
+address list fails five of its eight cases.
 
 `apps/api/src/modules/auth/controllers/auth.controller.spec.ts` boots
 the real controller through `@nestjs/testing` and asserts the wiring: a 100-request burst at

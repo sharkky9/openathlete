@@ -42,11 +42,10 @@ async function bootstrap() {
   }
 
   // Railway terminates TLS in front of the app, so the client address only
-  // exists in `X-Forwarded-For` and Express has to be told which entries of it
-  // belong to us. This trusts by address rather than by hop count: a count
-  // (`'trust proxy', 1`) made Express return Railway's internal hop as the
-  // client, which varies per edge node, so every caller behind one edge node
-  // landed in a single throttle bucket. See client-ip.util.ts.
+  // exists in `X-Forwarded-For`. This trusts every hop and takes the leftmost
+  // entry — correct only because Railway's edge strips the caller's own header
+  // and writes the real address. Without such a proxy in front, callers could
+  // forge that entry and bypass the throttle outright. See client-ip.util.ts.
   configureTrustProxy(app);
 
   const port = configService.get('PORT') ?? '3000';

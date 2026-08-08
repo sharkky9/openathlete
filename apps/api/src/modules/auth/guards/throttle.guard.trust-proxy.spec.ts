@@ -31,17 +31,25 @@ import { Throttle, ThrottleGuard } from 'src/modules/auth/guards';
 // two cannot drift apart), and asserts on what comes out the other end.
 //
 // Railway's edge overwrites any client-supplied `X-Forwarded-For` with the real
-// client address, then an internal hop may append its own. The header this app
-// sees is therefore `<client>` or `<client>, <internal hop>`, and the address
-// billed must be the leftmost — the real client — in both shapes.
+// client address, then one or more internal hops may append their own. The
+// header this app sees is therefore `<client>` or `<client>, <hop>[, <hop>…]`,
+// and the address billed must be the leftmost — the real client — in every
+// shape. `configureTrustProxy` gets there by trusting *every* hop, which makes
+// the leftmost entry the answer no matter how many hops Railway adds; the
+// address-list attempt that preceded it failed live because Railway's hop turns
+// out not to sit in any range that list named. See `client-ip.util.ts` for the
+// full history and, importantly, for what this setting costs.
 
 const CLIENT = '203.0.113.7';
 const OTHER_CLIENT = '203.0.113.8';
-// Two different Railway edge nodes, in the CGNAT range the trusted-proxy list
-// covers. The bug was that these two values produced two different buckets for
-// the same caller — and one shared bucket for every caller behind either.
+// Two different Railway internal hops. The bug was that these two values
+// produced two different buckets for the same caller — and one shared bucket
+// for every caller behind either. Their actual ranges are deliberately
+// unrelated: with every hop trusted, what a hop's address happens to be no
+// longer changes the answer, and these values being un-guessable is exactly
+// why the previous address-list configuration could not work.
 const RAILWAY_HOP = '100.64.12.34';
-const OTHER_RAILWAY_HOP = '100.64.200.9';
+const OTHER_RAILWAY_HOP = '66.33.22.11';
 
 const LIMIT = 3;
 const WINDOW_MS = 60_000;
@@ -107,28 +115,51 @@ describe('ThrottleGuard behind a trusted proxy (real Express resolution)', () =>
       expect(response.body.clientIp).not.toBe(RAILWAY_HOP);
     });
 
-    it('ignores an address the caller prepended to the header', async () => {
-      // A caller that sends its own `X-Forwarded-For` gets it overwritten at
-      // the edge, so its value can only ever appear to the *left* of the real
-      // client. Resolution stops at the first untrusted entry from the right,
-      // which is the edge-written one, so the spoof is never reached.
-      const response = await whoami(`198.51.100.66, ${CLIENT}, ${RAILWAY_HOP}`);
+    it('bills the client when the edge appends two hops', async () => {
+      const response = await whoami(
+        `${CLIENT}, ${RAILWAY_HOP}, ${OTHER_RAILWAY_HOP}`,
+      );
 
       expect(response.body.clientIp).toBe(CLIENT);
-      expect(response.body.clientIp).not.toBe('198.51.100.66');
     });
 
-    it('falls back to the hop when it is outside the trusted set', async () => {
-      // The known failure mode, pinned so it is visible rather than surprising:
-      // trust is by address, so a hop from a range the list does not cover is
-      // treated as the client and the shared-bucket bug returns. If Railway's
-      // internal hop is ever observed outside 100.64.0.0/10, this is the test
-      // that explains why production regressed.
-      const untrustedHop = '66.33.22.11';
+    it('bills the client when the edge appends three hops', async () => {
+      // The point of trusting every hop rather than naming the trusted ones:
+      // the answer does not move when Railway grows another layer. Both the
+      // hop count and the address list broke on exactly this — the count
+      // because it was tuned to one shape, the list because a hop it did not
+      // name stopped resolution dead.
+      const response = await whoami(
+        `${CLIENT}, ${RAILWAY_HOP}, ${OTHER_RAILWAY_HOP}, 10.1.2.3`,
+      );
 
-      const response = await whoami(`${CLIENT}, ${untrustedHop}`);
+      expect(response.body.clientIp).toBe(CLIENT);
+    });
 
-      expect(response.body.clientIp).toBe(untrustedHop);
+    it('trusts a leftmost entry the caller supplied — safe ONLY behind a stripping edge', async () => {
+      // The price of `trust proxy: true`, pinned rather than wished away.
+      //
+      // Express takes the leftmost `X-Forwarded-For` entry as the client, and
+      // it has no way to tell an entry the edge wrote from one the caller
+      // sent. Here nothing strips the header, so the caller's own value wins
+      // and it gets to name its own throttle bucket — send a fresh one per
+      // request and the limiter is not slowed down, it is bypassed entirely.
+      //
+      // In production this is unreachable because Railway's edge discards the
+      // inbound header and writes the real connecting address itself ("We do
+      // strip X-Forwarded-For at our edge and ensure clients cannot overwrite
+      // it"). That strip is the only thing standing between this setting and
+      // an unlimited limiter. If this API is ever reachable without such a
+      // proxy in front, this test is the description of the resulting hole —
+      // change `configureTrustProxy` before that happens, not after.
+      const callerSupplied = '198.51.100.66';
+
+      const response = await whoami(
+        `${callerSupplied}, ${CLIENT}, ${RAILWAY_HOP}`,
+      );
+
+      expect(response.body.clientIp).toBe(callerSupplied);
+      expect(response.body.clientIp).not.toBe(CLIENT);
     });
   });
 
