@@ -28,23 +28,36 @@ described below only where their behaviour matters during an upgrade.
 **Upgrade test:** `Deployment smoke test` workflow; then deploy the upgrade branch to a staging
 Railway environment and check the API, web and backup services boot.
 
-## Upstream Scaleway deploy workflow disabled
+## Upstream Scaleway deploy workflow and Terraform stack deleted
 
 **Reason:** upstream's deploy workflow pushes to a Scaleway registry this fork has no credentials
-for, and would fail on every push to `main`.
+for, and the OpenTofu/Terraform stack at the `infra/` root provisions the Scaleway VPC, managed
+Postgres, managed Redis, registry namespace, secrets and serverless containers that workflow
+targets. This fork deploys to Railway (see `infra/railway`) and has no Scaleway account, so neither
+can ever run here. They are deleted rather than carried as dead code: a guard on the workflow only
+bought a permanently-skipped job, and nothing can neutralize an infrastructure stack that describes
+resources the fork does not own.
 
-**Implementation:** one `if: github.repository == 'openathleteorg/openathlete'` condition on the
-`build-and-deploy` job in `.github/workflows/deploy.yml`.
+**Implementation:** `.github/workflows/deploy.yml` is removed, together with the whole Scaleway
+stack at the `infra/` root — `providers.tf`, `variables.tf`, `networking.tf`, `registry.tf`,
+`rdb.tf`, `redis_managed.tf`, `secrets.tf`, `container.tf`, `outputs.tf`,
+`terraform.tfvars.example` and `.terraform.lock.hcl` — and the now-dead Terraform entries in
+`.gitignore`. `infra/` therefore contains only `infra/railway/`.
 
-**Upstream modifications:** `.github/workflows/deploy.yml` (3 added lines). The file was previously
-deleted in this fork; it was restored with a guard so upstream edits to it merge cleanly instead of
-raising a modify/delete conflict.
+**Upstream modifications:** `.github/workflows/deploy.yml` and the eleven `infra/` root files are
+deleted; `.gitignore` loses its `.terraform` entry and its `# Terraform` block. Deletions conflict
+loudly on integration — see the upgrade test.
 
 **Upstream candidate:** no.
 
-**Removal condition:** upstream removes or replaces the Scaleway workflow.
+**Removal condition:** this fork starts deploying to Scaleway, or upstream itself drops the
+workflow and the stack (at which point the entry is moot rather than removed).
 
-**Upgrade test:** confirm the job is skipped, not failed, on a push to this fork's `main`.
+**Upgrade test:** a merge from upstream re-introduces every deleted path, either as a modify/delete
+conflict for the files upstream touched or as a plain restore for the rest. Resolve each in favour
+of the deletion (`git rm` the re-added paths), then confirm `infra/` still contains only `railway/`
+and `.github/workflows/` still has no `deploy.yml`. Reconsider only if upstream has meanwhile
+retargeted the workflow at something this fork could actually use.
 
 ## Web container renders nginx.conf at startup
 
@@ -455,172 +468,68 @@ the demo user through `POST /auth/login`. A failure here is a regression in the 
 If upstream changes the hashing algorithm or pepper handling, this seed must be updated to match
 (compare against `user.service.ts`) — that is a required test update, not a product regression.
 
-## Query cache is emptied at every account boundary
+## Package `license` fields match the shipped LICENSE
 
-**Reason:** the `QueryClient` is created once at module scope and logging out through the sidebar is
-a client-side navigation, so the cache survives it. Every query key under `apps/web/src/api` is a
-static string with no user identity in it, so the next account signed in to the same tab reads the
-previous one's responses for up to the 5-minute `staleTime`. The visible symptom was a brand-new
-signup being served the previous user's `GET /user/me` and routed past onboarding to the calendar
-(issue #36); the general problem is that one user's data is readable by the next.
+**Reason:** the root `LICENSE` is verbatim AGPLv3 (byte-identical to upstream's), and the README
+badge, the README License section and the website all say AGPLv3 — but every `package.json` in the
+tree declared `"license": "MPL-2.0"` and `CONTRIBUTING.md` asked contributors to license their work
+under the MPL. The contradiction is inherited verbatim from upstream. The `LICENSE` file wins: the
+metadata is what a registry, an SBOM scanner and a downstream reader see first, and it was
+describing a license the project does not ship.
 
-**Implementation:** the client moves to `apps/web/src/utils/query-client.ts`, which also exports
-`resetQueryCache()`. `AuthProvider` calls it in `logout` and at the top of `initialize` (which runs
-on mount and after every login, signup and onboarding completion). The axios 401 interceptor, which
-previously constructed a throwaway `QueryClient` and cleared *that*, now clears the real one.
+**Implementation:** `"license": "AGPL-3.0-only"` (the SPDX id for the shipped text) in
+`package.json`, `apps/{api,web,website}/package.json`, `libs/shared/package.json`,
+`libs/database/package.json`, `libs/config/{eslint-config,prettier-config}/package.json` and
+`e2e/package.json`; `CONTRIBUTING.md`'s License section now points at the AGPLv3 (same `LICENSE`
+link). `e2e/package-lock.json` still carries the old string in its root entry — it is generated and
+rewrites itself on the next `npm install`. No license text is changed anywhere.
 
-**Upstream modifications:** `apps/web/src/App.tsx`,
-`apps/web/src/contexts/auth/context/auth-provider.tsx`, `apps/web/src/utils/axios.ts`, plus the added
-`apps/web/src/utils/query-client.ts`.
+**Upstream modifications:** the nine `package.json` files and `CONTRIBUTING.md`.
 
-**Upstream candidate:** yes — a data-correctness bug with no fork-specific behaviour.
+**Upstream candidate:** yes, strongly — the fork relicenses nothing, it only corrects metadata that
+misdescribed upstream's own `LICENSE`, and upstream carries the identical contradiction today.
 
-**Removal condition:** upstream clears the cache on logout, or moves to per-user query keys.
+**Removal condition:** upstream corrects its own `license` fields (then take upstream's version), or
+upstream deliberately relicenses to MPL-2.0 and replaces `LICENSE` to match — in which case this
+entry is wrong rather than merely obsolete.
 
-**Upgrade test:** by hand — sign in, log out through the sidebar user menu (not a reload), sign up a
-new account, and confirm it lands on onboarding rather than the calendar. `apps/web` has no test
-runner yet, so this is the only check; see "Deferred: web unit tests" below.
+**Upgrade test:** grep the tree for `MPL-2.0`; the only tolerable hit is a regenerated lockfile.
+Confirm `LICENSE` is still AGPLv3 and that nothing else claims otherwise. This has no effect on
+`scripts/dependency-audit.js`, which reads only the advisory list from `pnpm audit --json --prod`.
 
-## Message threads are never created without a participant
+## Marketing copy limited to shipped capabilities
 
-**Reason:** the Messages page and the chatbot bubble both auto-fired
-`POST /messages/threads` with `participantUserIds: []` whenever the user had no threads. The API
-rejects that payload outright, and the Messages page guard (`threads.length === 0 && !isPending`)
-re-armed as soon as the failed request settled, so it looped. The New conversation dialog builds its
-list from coaches and coached athletes only, so an account with neither also faced a permanently
-disabled Create button and "0 conversations" forever (issues #37 and #39).
+**Reason:** the README, the landing copy and three blog articles advertised integrations and
+features that do not exist in this tree — TrainingPeaks import (no code anywhere), Coros
+(`coros.adapter.ts` is a `[MOCK]` no-op, its OAuth credentials are empty strings and it is
+commented out of the app's provider list), workout export to Polar and to Strava (both are
+import-only; the Polar adapter sets `exportWorkouts: false`), and "full data export" (there is no
+export endpoint or UI control). Two articles also carried a duplicated "Garmin, Polar, and Polar"
+where the second was plainly meant to be Suunto — in one of them it had reached the slug.
 
-**Implementation:** both auto-create effects are removed — the existing
-`m.chatbot_select_or_create()` empty state now stands, and a thread is created only when the user
-asks for one. In the dialog, Create no longer requires a selection: the current user is always a
-participant, so an account with nobody to add can still open a thread and add people later. That
-also removes the hardcoded English `title: 'New Thread'` that used to reach the database; the server
-derives a title from the participants instead.
+**Implementation:** import is described as Strava/Garmin/Suunto/Polar and workout export as
+Garmin/Suunto only; the data-export claims are dropped (the README comparison row now reads
+`❌ Not yet`, and landing comparison row 6 renders as a "no" with `Not yet`, which needed the one
+status flag in `comparison.tsx`); Coros survives only in the README roadmap, where it is
+legitimately aspirational; the sync article's slug becomes
+`how-to-sync-workouts-to-garmin-suunto` (it had no inbound references). No claim about Intervals.icu
+is added — there is no code for it yet.
 
-**Upstream modifications:** `apps/web/src/pages/dashboard/messages/index.tsx`,
-`apps/web/src/components/chatbot/chat-window.tsx`,
-`apps/web/src/components/messages/new-message-thread-dialog.tsx`.
+**Upstream modifications:** `README.md`, `apps/website/messages/{en,fr}.json`,
+`apps/website/src/components/landing/sections/comparison.tsx`,
+`apps/website/src/app/metadata.tsx` and `apps/website/src/components/seo/structured-data.tsx` (the
+SEO description repeats the landing copy in three places), and four articles under
+`apps/website/src/content/blog/`. These are prose files upstream edits freely, so upstream copy
+changes will conflict here.
 
-**Upstream candidate:** yes, with one product judgement to flag on integration: allowing a
-single-participant thread is a deliberate choice for this fork's single-user deployment. Upstream may
-prefer to point unlinked users at invitations instead; the auto-create removal stands either way.
+**Upstream candidate:** yes — upstream ships the same overclaims. Expect upstream to prefer shipping
+the capability over correcting the copy for some of them.
 
-**Removal condition:** upstream removes the auto-create effects.
+**Removal condition:** the capability lands (a real Coros adapter, Polar workout export, a data
+export endpoint) — the claim then becomes true and the wording can go back.
 
-**Upgrade test:** `pnpm api test` (`message-thread.service.spec.ts`) for the server contract. By
-hand: on an account with no coach or athlete link, open Messages and the chatbot bubble and confirm
-the network tab shows no `POST /messages/threads`, then create a conversation from the `+` button.
-
-## New conversation dialog strings go through Paraglide
-
-**Reason:** the dialog hardcoded `Nouvelle conversation`, `Sélectionnez les personnes avec qui vous
-souhaitez dialoguer`, `Aucune personne disponible pour démarrer une conversation` and `Annuler`, so
-an English user saw French text next to an English `Create` button (issue #34). Same class of defect
-as #9, which the "Localized UI strings and date formatting" section above covers.
-
-**Implementation:** the title reuses `m.chatbot_new_conversation()` and the cancel button `m.cancel()`;
-`messages_new_thread_description` and `messages_new_thread_no_people` are new keys in both catalogs.
-
-**Upstream modifications:** `apps/web/src/components/messages/new-message-thread-dialog.tsx`,
-`apps/web/messages/{en,fr}.json`.
-
-**Upstream candidate:** yes — a straight i18n bug fix.
-
-**Removal condition:** upstream localizes the same dialog; then take upstream's version.
-
-**Upgrade test:** `pnpm check:locale-parity`, then open the dialog with the language switcher on
-English and confirm no French remains.
-
-## Roles can be changed after onboarding
-
-**Reason:** `completeOnboarding` was the only writer of `roles`, `UpdateAccountDto` had no `roles`
-field, and `AuthGuard` only routes to onboarding while `onboardingCompleted` is false. An account
-that picked "I'm an athlete" once was athlete-only forever, with no self-serve way to start coaching
-(issue #35). This became reachable only after the fork made the onboarding selection authoritative
-(see "Onboarding role selection is authoritative" above).
-
-**Implementation:** `updateAccountDtoSchema` gains an optional, non-empty `roles` array;
-`UserService.updateAccount` writes it verbatim so roles are removed as well as added, matching
-`completeOnboarding`. Dropping `COACH` while `CoachAthlete` rows still point at the user is rejected
-with a 400 rather than silently orphaning those links. On the web, a new `RolesSection` in the
-Profile settings tab offers the same two toggles the onboarding step uses; it is deliberately not
-role-gated, and on success it invalidates `UserAPI.getMe` and re-runs `initialize()` so
-`useUserRoles`, `SpaceProvider` and the sidebar space switcher pick the change up.
-
-**Upstream modifications:** `libs/shared/src/types/dtos/auth/update-account.dto.ts`,
-`apps/api/src/modules/auth/services/user.service.ts`,
-`apps/api/src/modules/auth/controllers/user.controller.ts` (Swagger only),
-`apps/web/src/views/dashboard/settings-view/profile-tab.tsx`, `apps/web/messages/{en,fr}.json`, plus
-the added `apps/web/src/views/dashboard/settings-view/roles-section.tsx`.
-
-**Upstream candidate:** yes — upstream has the same gap once role selection is authoritative. The
-one judgement call is refusing to drop `COACH` while athletes are still linked; unlinking them
-automatically is the other defensible answer.
-
-**Removal condition:** upstream adds a roles editor (or a dedicated `PATCH /user/roles`).
-
-**Upgrade test:** `pnpm api test` (`user-roles.spec.ts`). By hand: onboard as athlete only, then add
-the coach role from Settings -> Profile and confirm the Athletes tab appears without a reload.
-
-## Deep imports where a barrel would cycle
-
-**Reason:** `src/modules/auth/index.ts` re-exports the auth controllers, and
-`src/modules/subscription/index.ts` re-exports the subscription controllers, which import back into
-`src/modules/auth` for `@JwtUser`. Nest tolerates the cycle when the whole application boots, but
-loading a single service through the barrel evaluates the controller decorators mid-cycle and throws
-`(0 , auth_1.JwtUser) is not a function` — which made `TrainingLoadService` and `UserService`
-untestable in isolation.
-
-**Implementation:** two imports changed from the barrel to the defining file —
-`CaslAbilityFactory` in `training-load.service.ts` and `FeatureAccessService` in
-`athlete-invitation.service.ts`. Runtime behaviour is unchanged; both resolve to the same class.
-
-**Upstream modifications:** `apps/api/src/modules/core/services/training-load.service.ts`,
-`apps/api/src/modules/auth/services/athlete-invitation.service.ts`.
-
-**Upstream candidate:** yes.
-
-**Removal condition:** upstream splits the controllers out of those barrels.
-
-**Upgrade test:** `pnpm api test` — a suite failing to *load* with "is not a function" means the
-cycle is back.
-
-## Training-load ATL/CTL/TSB unit tests
-
-**Reason:** the CTL/ATL/TSB calculation is the core of the product's value and had no test at all.
-
-**Implementation:** `apps/api/src/modules/core/services/training-load.service.spec.ts` drives
-`getTrainingLoadMetrics` and `getTrainingLoadHistory` against an in-memory Prisma stub. Expectations
-come from the closed form of the EWMA (`L * (1 - (1 - alpha)^n)` for a constant load,
-`alpha * L * (1 - alpha)^k` after a spike) rather than from the implementation's own recurrence.
-`apps/api/jest-setup.ts` pins `TZ=UTC` for the run.
-
-**Upstream modifications:** `apps/api/package.json` (jest `setupFiles` and a `src/*`
-`moduleNameMapper`).
-
-**Upstream candidate:** yes.
-
-**Removal condition:** upstream adds equivalent coverage.
-
-**Upgrade test:** `pnpm api test`. A red assertion here is a genuine change to the training-load
-maths — check it was intended before touching the spec.
-
-**Known defect, deliberately not fixed here:** `TrainingLoadService` builds its day keys with a mix
-of local-time `setHours(0, 0, 0, 0)` and UTC `toISOString().split('T')[0]`, so outside UTC a load can
-be attributed to the previous day. The tests pin TZ=UTC rather than paper over it; the fix belongs in
-its own change.
-
-## Deferred: web unit tests
-
-`apps/web` still has no test runner, so #34, #36, #37 and #39 are covered by the API specs and by
-hand only. A working Vitest setup — `vitest`, `jsdom` and Testing Library in
-`apps/web` devDependencies, a `vitest.config.ts` (jsdom plus the Paraglide plugin, because
-`src/paraglide` is generated and gitignored), a `vitest.setup.ts` (Radix needs `ResizeObserver`,
-`scrollIntoView` and `matchMedia`, none of which jsdom implements) and 23 assertions across five
-specs — was written alongside these fixes but is not in this change: it edits `pnpm-lock.yaml`, and
-this branch can only be pushed through the GitHub API, which sends whole files. At 784 KB the
-lockfile cannot go that way, and shipping `apps/web/package.json` without it would break
-`pnpm install --frozen-lockfile` for every CI job.
-
-Landing it needs a push path that can carry the lockfile. Once it lands, `.github/workflows/tests.yml`
-also needs a `web-unit` job next to the existing `api-unit` one, or the suite will not run in CI.
+**Upgrade test:** on conflict, resolve toward whichever side matches the code: check
+`apps/api/src/modules/providers-sync/adapters/` for `exportWorkouts` and for a non-`[MOCK]` Coros
+adapter, and search the API for an export endpoint before restoring any "full export" wording. Then
+`pnpm format` and `pnpm website build`; `apps/website/messages/{en,fr}.json` must keep identical key
+sets or the Paraglide build fails.
