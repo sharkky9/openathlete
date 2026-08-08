@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client';
 
 import App from './App.tsx';
 import './theme/index.css';
-import { loadAnalyticsScripts } from './utils/analytics';
 import { isCapacitor } from './utils/capacitor';
 import { initChunkLoadRecovery } from './utils/chunk-recovery';
 import { initErrorMonitoring } from './utils/error-monitoring';
@@ -27,7 +26,6 @@ if (isCapacitor()) {
 }
 
 initErrorMonitoring();
-loadAnalyticsScripts();
 initStatusBar();
 initChunkLoadRecovery();
 initZodErrorMap();

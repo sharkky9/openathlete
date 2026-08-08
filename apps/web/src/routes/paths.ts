@@ -36,10 +36,6 @@ export const paths: Paths = {
       root: `${ROOTS.DASHBOARD}/calendar`,
       athleteId: `${ROOTS.DASHBOARD}/calendar/:athleteId`,
     },
-    summary: {
-      root: `${ROOTS.DASHBOARD}/summary`,
-      athleteId: `${ROOTS.DASHBOARD}/summary/:athleteId`,
-    },
     statistics: {
       root: `${ROOTS.DASHBOARD}/statistics`,
       athleteId: `${ROOTS.DASHBOARD}/statistics/:athleteId`,

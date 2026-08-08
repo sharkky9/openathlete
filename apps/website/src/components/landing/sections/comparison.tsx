@@ -217,28 +217,6 @@ export function Comparison() {
         text: m.landing_compare_row_7_intervals,
       },
     },
-    {
-      feature: m.landing_compare_row_8_feature,
-      openathlete: {
-        kind: 'status',
-        status: 'yes',
-        text: m.landing_compare_row_8_oa,
-      },
-      trainingpeaks: {
-        kind: 'status',
-        status: 'partial',
-        text: m.landing_compare_row_8_tp,
-      },
-      strava: { kind: 'status', status: 'no' },
-      intervals: { kind: 'status', status: 'no' },
-    },
-    {
-      feature: m.landing_compare_row_9_feature,
-      openathlete: { kind: 'plain', text: m.landing_compare_row_9_oa },
-      trainingpeaks: { kind: 'plain', text: m.landing_compare_row_9_tp },
-      strava: { kind: 'plain', text: m.landing_compare_row_9_strava },
-      intervals: { kind: 'plain', text: m.landing_compare_row_9_intervals },
-    },
   ];
 
   return (

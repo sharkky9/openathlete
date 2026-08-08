@@ -57,12 +57,11 @@ OpenAthlete is a different proposition: comparable tracking and analysis in an o
 - 📊 **Comprehensive Tracking** — Workouts, fitness/fatigue/form metrics, progression visualizations
 - 🔗 **Device Integrations** — Activity import from Strava, Garmin, Suunto, Polar; workout export to Garmin and Suunto
 - 📱 **Mobile Apps** — Native iOS ([TestFlight](https://testflight.apple.com/join/1hBg4mR1)), Android coming
-- 🤖 **AI Assistance** — Modest helpers for session generation and load monitoring (not a replacement for a coach)
 - 🌐 **Open Source** — AGPLv3, community-driven, sustainably funded
 
 ### Comparison
 
-| Feature | 🟢 OpenAthlete Cloud | 🔵 TrainingPeaks | 🟠 Strava | 🟣 Intervals.icu |
+| Feature | 🟢 OpenAthlete | 🔵 TrainingPeaks | 🟠 Strava | 🟣 Intervals.icu |
 | --- | --- | --- | --- | --- |
 | **Open source code** | ✅ AGPLv3 | ❌ | ❌ | ❌ |
 | **Self-hostable option** | ✅ Free | ❌ | ❌ | ❌ |
@@ -71,8 +70,6 @@ OpenAthlete is a different proposition: comparable tracking and analysis in an o
 | **Transparent algorithms** | ✅ Code audit | ❌ Black box | ❌ Black box | ⚠️ Partial |
 | **Full data export** | ❌ Not yet | ⚠️ Limited | ⚠️ Limited | ✅ |
 | **CTL/ATL/TSB tracking** | ✅ | ✅ | ❌ | ✅ |
-| **AI session generation** | ✅ Optional | ⚠️ Premium | ❌ | ❌ |
-| **Price** | 12€/mo or 99€/yr | $19.99/mo | $11.99/mo | Free (donation) |
 
 ## Recognition
 
@@ -88,7 +85,6 @@ OpenAthlete is built by athletes, for athletes. We're proud to be part of the op
 - [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS
 - [ShadCN UI](https://ui.shadcn.com/) - Beautiful component library
 - [Vite](https://vitejs.dev/) - Next-generation frontend tooling
-- Various LLM providers (configurable)
 
 <!-- ## Stay Up-to-Date
 
@@ -110,8 +106,6 @@ Here is what you need to be able to run OpenAthlete.
 - **pnpm** (Version: >=9.x) - Fast, disk space efficient package manager
 - **PostgreSQL** (Version: >=13.x) - Database
 - **Git** - Version control
-
-> If you want to enable AI features, you may need to obtain API credentials. More details can be found in the [documentation](https://docs.openathlete.org).
 
 ## Development
 
@@ -382,11 +376,10 @@ For a complete list of environment variables, see the `.env.example` files in ea
 
 > OpenAthlete is built by one developer in Grenoble, supported by the community. There are three ways to help the project thrive:
 >
-> - **Subscribe to OpenAthlete Cloud** — The simplest way to support development while getting a managed, zero-config experience. See [openathlete.org](https://openathlete.org).
 > - **Become a Patreon supporter** — Recurring support without using the cloud. [patreon.com/OpenAthlete](https://patreon.com/OpenAthlete).
 > - **Contribute code or feedback** — Star the repo, open issues, send PRs, join the [Discord](https://discord.gg/j4PP6tDwuP).
 >
-> Self-hosting is fully supported and always free. The Cloud version funds the project's long-term sustainability.
+> Self-hosting is fully supported. Community support funds the project's long-term sustainability.
 
 <!-- ROADMAP -->
 
@@ -398,7 +391,6 @@ OpenAthlete is actively developed. Here's what's coming next:
 - 📈 **Enhanced Dashboards** - Intuitive data visualizations and performance analytics
 - 🔗 **More Integrations** - Wahoo, Coros, Zwift, Oura, and more
 - 📅 **Weekly Training View** - Better calendar and planning interface
-- 🏃 **Advanced AI Features** - More intelligent training suggestions and injury prevention
 - 📱 **Mobile App Enhancements** - Improved mobile experience and offline support
 
 See our [GitHub Issues](https://github.com/openathleteorg/openathlete/issues) for a detailed list of proposed features and known issues.

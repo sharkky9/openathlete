@@ -11,6 +11,7 @@ import { GarminAdapter } from './adapters/garmin.adapter';
 import { SuuntoAdapter } from './adapters/suunto.adapter';
 import { ProviderOAuthController } from './controllers/provider-oauth.controller';
 import { ProviderExportService } from './export.service';
+import { ProviderImportScheduler } from './provider-import.scheduler';
 import {
   CorosProviderService,
   GarminProviderService,
@@ -37,6 +38,7 @@ import { ProviderExportScheduler } from './scheduler.service';
     CorosAdapter,
     ProviderExportService,
     ProviderExportScheduler,
+    ProviderImportScheduler,
     StravaProviderService,
     GarminProviderService,
     SuuntoProviderService,

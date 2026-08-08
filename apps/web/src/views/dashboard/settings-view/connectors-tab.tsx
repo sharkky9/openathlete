@@ -2,15 +2,12 @@ import { useGetMyIcalCalendarSecretQuery } from '@/api/event';
 import {
   useDisconnectProviderMutation,
   useGetConnectedProvidersQuery,
-  useGetOAuthUriMutation,
   useImportAllActivitiesMutation,
   useUpdateProviderPreferencesMutation,
 } from '@/api/provider';
-import { GarminLogo, StravaIcon } from '@/assets/icons';
-import { PolarLogo, SuuntoLogo } from '@/assets/icons/providers';
 import { ConfirmAction } from '@/components/confirm-action';
 import { ApiKeyConnectDialog } from '@/components/connectors/api-key-connect-dialog';
-import { isApiKeyProvider } from '@/components/connectors/api-key-providers';
+import { SUPPORTED_CONNECTOR_PROVIDERS } from '@/components/connectors/api-key-providers';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -29,12 +26,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { API_BASE_URL } from '@/config';
 import { m } from '@/paraglide/messages';
-import {
-  AnalyticsEvent,
-  setOauthConnectSourceForRedirect,
-} from '@/utils/analytics-events';
+import { AnalyticsEvent } from '@/utils/analytics-events';
 import { connectorProviderLabelMap } from '@/utils/label-map/core/connector-provider.label-map';
-import { openOAuthUrl } from '@/utils/oauth';
 import { cn } from '@/utils/shadcn';
 import { CheckCircle2, ChevronDown, Link2, Link2Off } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
@@ -48,15 +41,6 @@ import {
 } from '@openathlete/shared';
 
 import { SettingsSection } from './settings-section';
-
-const SUPPORTED_PROVIDERS: ConnectorProvider[] = [
-  'INTERVALS_ICU',
-  'STRAVA',
-  'GARMIN',
-  'SUUNTO',
-  'POLAR',
-  // 'COROS',
-];
 
 export function ConnectorsTab() {
   const posthog = usePostHog();
@@ -75,28 +59,6 @@ export function ConnectorsTab() {
 
   const { data: connectedProviders = [], isLoading: isLoadingConnected } =
     useGetConnectedProvidersQuery();
-
-  const getOAuthUriMutation = useGetOAuthUriMutation({
-    onSuccess: async (response, provider) => {
-      setOauthConnectSourceForRedirect('settings');
-      posthog?.capture(AnalyticsEvent.provider_connect_initiated, {
-        provider,
-        source: 'settings',
-      });
-      // For PKCE providers (like Garmin), store codeVerifier in localStorage
-      // Using localStorage instead of sessionStorage to persist across OAuth redirects
-      if (response.codeVerifier) {
-        const storageKey = `oauth_code_verifier_${provider.toUpperCase()}`;
-        localStorage.setItem(storageKey, response.codeVerifier);
-      } else if (provider.toUpperCase() === 'GARMIN') {
-        console.error('Garmin OAuth: codeVerifier not found in response');
-      }
-      await openOAuthUrl(response.uri);
-    },
-    onError: (error) => {
-      toast.error(error.message || m.failed_to_initiate_connection());
-    },
-  });
 
   const disconnectMutation = useDisconnectProviderMutation({
     onSuccess: (_, provider) => {
@@ -172,12 +134,7 @@ export function ConnectorsTab() {
   };
 
   const handleConnect = (provider: ConnectorProvider) => {
-    // API-key providers (Intervals.icu) have no OAuth redirect: collect the key.
-    if (isApiKeyProvider(provider)) {
-      setApiKeyProvider(provider);
-      return;
-    }
-    getOAuthUriMutation.mutate(provider);
+    setApiKeyProvider(provider);
   };
 
   const handleDisconnect = (provider: ConnectorProvider) => {
@@ -188,21 +145,6 @@ export function ConnectorsTab() {
   const handleConfirmDisconnect = () => {
     if (providerToDisconnect) {
       disconnectMutation.mutate(providerToDisconnect);
-    }
-  };
-
-  const getProviderIcon = (provider: ConnectorProvider) => {
-    switch (provider) {
-      case 'STRAVA':
-        return <StravaIcon />;
-      case 'GARMIN':
-        return <GarminLogo className="h-6 w-auto" />;
-      case 'POLAR':
-        return <PolarLogo className="h-6 w-auto" />;
-      case 'SUUNTO':
-        return <SuuntoLogo className="h-6 w-auto" />;
-      default:
-        return <Link2 className="h-5 w-5" />;
     }
   };
 
@@ -231,30 +173,30 @@ export function ConnectorsTab() {
       >
         <div className="grid gap-4">
           {isLoadingConnected
-            ? Array.from({ length: SUPPORTED_PROVIDERS.length }).map((_, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Skeleton className="h-10 w-10 rounded" />
-                        <div>
-                          <Skeleton className="h-5 w-32 mb-2" />
-                          <Skeleton className="h-4 w-24" />
+            ? Array.from({ length: SUPPORTED_CONNECTOR_PROVIDERS.length }).map(
+                (_, i) => (
+                  <Card key={i}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-10 w-10 rounded" />
+                          <div>
+                            <Skeleton className="h-5 w-32 mb-2" />
+                            <Skeleton className="h-4 w-24" />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-10 w-full" />
-                  </CardContent>
-                </Card>
-              ))
-            : SUPPORTED_PROVIDERS.map((provider) => {
+                    </CardHeader>
+                    <CardContent>
+                      <Skeleton className="h-10 w-full" />
+                    </CardContent>
+                  </Card>
+                ),
+              )
+            : SUPPORTED_CONNECTOR_PROVIDERS.map((provider) => {
                 const connected = isConnected(provider);
                 const isLoading =
-                  getOAuthUriMutation.isPending ||
-                  disconnectMutation.isPending ||
-                  isLoadingConnected;
+                  disconnectMutation.isPending || isLoadingConnected;
                 const providerDetails = connectedProviders.find(
                   (p) => p.provider === provider,
                 );
@@ -316,7 +258,7 @@ export function ConnectorsTab() {
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center flex-shrink-0">
-                            {getProviderIcon(provider)}
+                            <Link2 className="h-5 w-5" />
                           </div>
                           <div>
                             <CardTitle className="text-base">
@@ -452,11 +394,6 @@ export function ConnectorsTab() {
                                           connectorProviderLabelMap[provider],
                                       })}
                                     </p>
-                                    {provider === 'GARMIN' && (
-                                      <p className="text-xs text-muted-foreground">
-                                        {m.full_import_garmin_hint()}
-                                      </p>
-                                    )}
                                     {fullImportCompleted ? (
                                       <p className="text-sm text-muted-foreground">
                                         {m.full_import_completed()}

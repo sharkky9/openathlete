@@ -19,21 +19,35 @@ type FirebaseWebConfig = {
   appId: string;
 };
 
-function getFirebaseWebConfig(): FirebaseWebConfig {
-  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
-  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as
-    | string
-    | undefined;
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as
-    | string
-    | undefined;
-  const appId = import.meta.env.VITE_FIREBASE_APP_ID as string | undefined;
+function readFirebaseWebConfig(): Partial<FirebaseWebConfig> {
+  return {
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID as string | undefined,
+  };
+}
 
-  if (!apiKey || !authDomain || !projectId || !appId) {
+function isFirebaseWebConfigComplete(
+  config: Partial<FirebaseWebConfig>,
+): config is FirebaseWebConfig {
+  return Object.values(config).every(
+    (value) => typeof value === 'string' && value.trim().length > 0,
+  );
+}
+
+export function isFirebaseAuthenticationConfigured(): boolean {
+  return isCapacitor() || isFirebaseWebConfigComplete(readFirebaseWebConfig());
+}
+
+function getFirebaseWebConfig(): FirebaseWebConfig {
+  const config = readFirebaseWebConfig();
+
+  if (!isFirebaseWebConfigComplete(config)) {
     throw new Error('Firebase web config is missing (VITE_FIREBASE_*)');
   }
 
-  return { apiKey, authDomain, projectId, appId };
+  return config;
 }
 
 let webAuth: Auth | null = null;

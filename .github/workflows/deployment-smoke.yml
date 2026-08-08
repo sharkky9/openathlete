@@ -81,9 +81,6 @@ jobs:
             -e POLAR_WEBHOOK_SECRET_KEY=ci.polar.webhook.secret \
             -e BREVO_API_KEY=ci.brevo.api.key \
             -e BREVO_FROM_EMAIL=ci@example.com \
-            -e OPENAI_API_KEY=ci.openai.api.key \
-            -e GOOGLE_GENERATIVE_AI_API_KEY=ci.google.api.key \
-            -e STRIPE_SECRET_KEY=sk_test.ci.placeholder \
             openathlete-api:ci
 
       - name: Wait for /health
@@ -272,9 +269,6 @@ jobs:
             -e POLAR_WEBHOOK_SECRET_KEY=ci.polar.webhook.secret \
             -e BREVO_API_KEY=ci.brevo.api.key \
             -e BREVO_FROM_EMAIL=ci@example.com \
-            -e OPENAI_API_KEY=ci.openai.api.key \
-            -e GOOGLE_GENERATIVE_AI_API_KEY=ci.google.api.key \
-            -e STRIPE_SECRET_KEY=sk_test.ci.placeholder \
             openathlete-api:ci
 
       - name: Start web container

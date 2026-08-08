@@ -1,14 +1,9 @@
-import OpenAI, { Uploadable } from 'openai';
-
 import {
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-
-import { ApiEnvSchemaType } from '@openathlete/shared';
 
 import { ActivityFeedbackCompletedEvent } from 'src/events';
 import { CaslAbilityFactory } from 'src/modules/auth';
@@ -18,18 +13,11 @@ import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 
 @Injectable()
 export class ActivityFeedbackService {
-  private readonly openai: OpenAI;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly abilities: CaslAbilityFactory,
     private readonly eventEmitter: EventEmitter2,
-    private readonly configService: ConfigService<ApiEnvSchemaType, true>,
-  ) {
-    this.openai = new OpenAI({
-      apiKey: this.configService.get('OPENAI_API_KEY') ?? '',
-    });
-  }
+  ) {}
 
   async getActivityFeedbackQuestions(user: AuthUser, eventActivityId: number) {
     const ability = await this.abilities.getFor({ user });
@@ -299,68 +287,5 @@ export class ActivityFeedbackService {
     });
 
     return { success: true };
-  }
-
-  async transcribeAudio(file: {
-    buffer: Buffer;
-    mimetype: string;
-    originalname?: string;
-  }): Promise<{ text: string }> {
-    try {
-      let fileForOpenAI: File | Buffer;
-
-      // Determine MIME type from file extension for OpenAI compatibility
-      // OpenAI Whisper checks the actual file format, so we need to match
-      // the MIME type to the file extension
-      // For .m4a files, OpenAI expects the file to be in M4A format
-      // The MIME type should match what OpenAI expects for that extension
-      let mimeTypeForOpenAI = file.mimetype;
-      const fileName = file.originalname || 'audio.webm';
-      const extension = fileName.split('.').pop()?.toLowerCase();
-
-      // Map extensions to OpenAI-supported MIME types
-      // OpenAI supports: flac, m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm
-      // For .m4a files, use audio/mp4 (M4A is MPEG-4 Audio, which uses audio/mp4 MIME type)
-      // But OpenAI will check the actual file format based on extension
-      if (extension === 'm4a') {
-        mimeTypeForOpenAI = 'audio/mp4';
-      } else if (extension === 'mp3' || extension === 'mpga') {
-        mimeTypeForOpenAI = 'audio/mpeg';
-      } else if (extension === 'ogg' || extension === 'oga') {
-        mimeTypeForOpenAI = 'audio/ogg';
-      } else if (extension === 'wav') {
-        mimeTypeForOpenAI = 'audio/wav';
-      } else if (extension === 'webm') {
-        mimeTypeForOpenAI = 'audio/webm';
-      } else if (extension === 'mp4') {
-        mimeTypeForOpenAI = 'audio/mp4';
-      } else if (extension === 'flac') {
-        mimeTypeForOpenAI = 'audio/flac';
-      }
-
-      if (typeof File !== 'undefined') {
-        fileForOpenAI = new File(
-          [file.buffer as unknown as ArrayBuffer],
-          fileName,
-          {
-            type: mimeTypeForOpenAI,
-          },
-        );
-      } else {
-        fileForOpenAI = file.buffer;
-      }
-
-      const transcription = await this.openai.audio.transcriptions.create({
-        file: fileForOpenAI as Uploadable,
-        model: 'whisper-1',
-        language: 'fr',
-      });
-
-      return { text: transcription.text };
-    } catch (error) {
-      throw new Error(
-        `Failed to transcribe audio: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
   }
 }

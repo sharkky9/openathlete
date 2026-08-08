@@ -1,10 +1,8 @@
 import { useSubmitQuestionAnswerMutation } from '@/api/activity-feedback';
 import type { ActivityFeedbackQuestion } from '@/api/activity-feedback';
-import { AudioRecorder } from '@/components/activity-feedback/audio-recorder';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { m } from '@/paraglide/messages';
-import { cn } from '@/utils/shadcn';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -40,8 +38,6 @@ export function ActivityFeedbackFlow({
   const [answers, setAnswers] =
     useState<Record<number, string>>(initialAnswers);
   const [useQcmForCurrent, setUseQcmForCurrent] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
   const submitMutation = useSubmitQuestionAnswerMutation(eventId);
 
   const handleNext = async (answerText: string) => {
@@ -161,24 +157,7 @@ export function ActivityFeedbackFlow({
           ) : (
             <div className="flex flex-col gap-4 w-full">
               <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-center w-full">
-                  <AudioRecorder
-                    setIsRecording={setIsRecording}
-                    setIsTranscribing={setIsTranscribing}
-                    onTranscriptionComplete={(text) => {
-                      setAnswers({
-                        ...answers,
-                        [currentQuestion.questionId]: text,
-                      });
-                    }}
-                  />
-                </div>
-                <div
-                  className={cn(
-                    (isRecording || isTranscribing) &&
-                      'ai-rotating-brand-border-textarea',
-                  )}
-                >
+                <div>
                   <Textarea
                     value={currentAnswer}
                     onChange={(e) =>
@@ -189,7 +168,6 @@ export function ActivityFeedbackFlow({
                     }
                     placeholder={m.activity_feedback_free_text_recommended()}
                     className="min-h-[120px]"
-                    disabled={isRecording || isTranscribing}
                   />
                 </div>
               </div>

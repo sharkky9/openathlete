@@ -75,14 +75,6 @@ export function Footer() {
                   {m.footer_signup()}
                 </Link>
               </li>
-              <li>
-                <Link
-                  href={getLocalizedPath('/#pricing')}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {m.footer_pricing()}
-                </Link>
-              </li>
             </ul>
           </div>
 

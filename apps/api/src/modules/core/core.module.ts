@@ -6,8 +6,8 @@ import { MessagesModule } from '../messages/messages.module';
 import { PrismaService } from '../prisma/services/prisma.service';
 import { ProvidersSyncModule } from '../providers-sync/providers-sync.module';
 import { QueueModule } from '../queue';
+import { activityPipelineProvider } from './activity-pipeline.provider';
 import { EventController } from './controllers';
-import { ActivityFeedbackController } from './controllers/activity-feedback.controller';
 import { AthleteController } from './controllers/athlete.controller';
 import { CoachController } from './controllers/coach.controller';
 import { CycleController } from './controllers/cycle.controller';
@@ -62,7 +62,6 @@ import { WeatherService } from './services/weather/weather.service';
     forwardRef(() => ProvidersSyncModule),
   ],
   controllers: [
-    ActivityFeedbackController,
     EventController,
     EventTemplateController,
     EventTemplateFolderController,
@@ -107,28 +106,7 @@ import { WeatherService } from './services/weather/weather.service';
     WeatherProcessor,
     NormalizationProcessor,
     TrainingMatchProcessor,
-    {
-      provide: ActivityPipelineService,
-      useFactory: (
-        gap: GapProcessor,
-        weather: WeatherProcessor,
-        normalization: NormalizationProcessor,
-        trainingMatch: TrainingMatchProcessor,
-      ) =>
-        new ActivityPipelineService([
-          gap,
-          weather,
-          normalization,
-          trainingMatch,
-        ]),
-      inject: [
-        PrismaService,
-        GapProcessor,
-        WeatherProcessor,
-        NormalizationProcessor,
-        TrainingMatchProcessor,
-      ],
-    },
+    activityPipelineProvider,
   ],
   exports: [
     EventService,

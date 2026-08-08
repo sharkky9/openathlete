@@ -1,8 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUserRoles } from '@/contexts/auth';
-import { SubscriptionSettingsPage } from '@/pages/dashboard/settings/subscription';
 import { m } from '@/paraglide/messages';
-import { isPaymentDisabled } from '@/utils/capacitor';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -53,9 +51,6 @@ export function SettingsView() {
               <TabsTrigger value="coaches">{m.coaches()}</TabsTrigger>
             )}
             <TabsTrigger value="invitations">{m.invitations()}</TabsTrigger>
-            {!isPaymentDisabled() && (
-              <TabsTrigger value="subscription">{m.subscription()}</TabsTrigger>
-            )}
             <TabsTrigger value="contribute">{m.contribute()}</TabsTrigger>
           </TabsList>
         </div>
@@ -80,11 +75,6 @@ export function SettingsView() {
         <TabsContent value="invitations" className="mt-6">
           <InvitationsTab />
         </TabsContent>
-        {!isPaymentDisabled() && (
-          <TabsContent value="subscription" className="mt-6">
-            <SubscriptionSettingsPage />
-          </TabsContent>
-        )}
         <TabsContent value="contribute" className="mt-6">
           <ContributeTab />
         </TabsContent>

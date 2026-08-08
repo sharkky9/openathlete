@@ -37,12 +37,14 @@ import {
   TSB_DETRAINING_THRESHOLD,
   TSB_OVERREACHING_THRESHOLD,
 } from 'src/common/constants/training-formulas.constants';
+import {
+  addDaysAnchor,
+  dayRangeInstants,
+  normalizeTimeZone,
+  startOfWeekAnchor,
+  toDayAnchor,
+} from 'src/common/utils/day-anchor';
 import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
-// Imported from the file rather than the `src/modules/auth` barrel: the barrel
-// re-exports the auth controllers, which pull in the subscription module, which
-// imports back into auth. Nest tolerates the cycle at runtime, but loading this
-// service on its own (as a unit test does) evaluates the decorators mid-cycle
-// and fails with "JwtUser is not a function".
 import { CaslAbilityFactory } from 'src/modules/auth/services/casl-ability.factory';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 
@@ -121,35 +123,9 @@ export class TrainingLoadService {
     return a + (b - a) * t;
   }
 
-  /**
-   * A training day is a UTC calendar day.
-   *
-   * `TrainingLoadEntry.date` is a `@db.Date` column, which Prisma reads back as
-   * midnight UTC, and an entry's day is derived from the UTC calendar day of
-   * its activity's start instant (see `calculateAndSaveTrainingLoad`). Every
-   * day key and every day boundary below has to use that same definition.
-   *
-   * The helpers exist because the obvious spellings disagree: `setHours` and
-   * `getDate` work in the server's local time, while `toISOString` reports UTC.
-   * Mixing the two shifts the whole day grid off the stored data by a day
-   * wherever the server is not on UTC, which silently drops loads.
-   */
+  /** `TrainingLoadEntry.date` is a UTC-midnight encoding of a calendar date. */
   private toDayKey(date: Date) {
     return date.toISOString().split('T')[0];
-  }
-
-  /** Midnight UTC of the calendar day containing `date`. */
-  private startOfUtcDay(date: Date) {
-    return new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-    );
-  }
-
-  /** `date` shifted by whole UTC days, leaving the time of day untouched. */
-  private addUtcDays(date: Date, days: number) {
-    const shifted = new Date(date);
-    shifted.setUTCDate(shifted.getUTCDate() + days);
-    return shifted;
   }
 
   private getWeekLoadSum(
@@ -157,12 +133,12 @@ export class TrainingLoadService {
     weekStart: Date,
     weekEnd: Date,
   ) {
-    let cursor = this.startOfUtcDay(weekStart);
+    let cursor = addDaysAnchor(weekStart, 0);
     let sum = 0;
 
     while (cursor <= weekEnd) {
       sum += dailyLoadLookup.get(this.toDayKey(cursor)) ?? 0;
-      cursor = this.addUtcDays(cursor, 1);
+      cursor = addDaysAnchor(cursor, 1);
     }
 
     return sum;
@@ -176,8 +152,8 @@ export class TrainingLoadService {
     const loads: number[] = [];
 
     for (let weekOffset = 0; weekOffset < weeks; weekOffset++) {
-      const weekEnd = this.addUtcDays(referenceDate, -weekOffset * 7);
-      const weekStart = this.addUtcDays(weekEnd, -6);
+      const weekEnd = addDaysAnchor(referenceDate, -weekOffset * 7);
+      const weekStart = addDaysAnchor(weekEnd, -6);
       loads.push(this.getWeekLoadSum(dailyLoadLookup, weekStart, weekEnd));
     }
 
@@ -701,17 +677,9 @@ export class TrainingLoadService {
       },
     });
 
-    const startDate = new Date(event.startDate);
-    const activityDate = new Date(
-      Date.UTC(
-        startDate.getUTCFullYear(),
-        startDate.getUTCMonth(),
-        startDate.getUTCDate(),
-        0,
-        0,
-        0,
-        0,
-      ),
+    const activityDate = toDayAnchor(
+      event.startDate,
+      normalizeTimeZone(athlete.timezone),
     );
 
     if (existingEntry) {
@@ -752,6 +720,7 @@ export class TrainingLoadService {
 
     // Determine which athlete's training load to fetch
     let targetAthleteId: number;
+    let timeZone: string;
 
     if (athleteId) {
       // Check if user can access this athlete's data
@@ -768,6 +737,7 @@ export class TrainingLoadService {
       }
 
       targetAthleteId = athleteId;
+      timeZone = normalizeTimeZone(athlete.timezone);
     } else {
       // Use current user's athlete ID
       const athlete = await this.prisma.athlete.findFirst({
@@ -783,12 +753,27 @@ export class TrainingLoadService {
       }
 
       targetAthleteId = athlete.athleteId;
+      timeZone = normalizeTimeZone(athlete.timezone);
     }
 
+    return this.getDailyLoadsForAnchors(
+      calculationType,
+      toDayAnchor(startDate, timeZone),
+      toDayAnchor(endDate, timeZone),
+      targetAthleteId,
+    );
+  }
+
+  private async getDailyLoadsForAnchors(
+    calculationType: TrainingLoadCalculationType,
+    startAnchor: Date,
+    endAnchor: Date,
+    athleteId: number,
+  ): Promise<DailyTrainingLoad[]> {
     const calculation = await this.prisma.trainingLoadCalculation.findUnique({
       where: {
         athleteId_type: {
-          athleteId: targetAthleteId,
+          athleteId,
           type: calculationType,
         },
       },
@@ -802,8 +787,8 @@ export class TrainingLoadService {
       where: {
         calculationId: calculation.trainingLoadCalculationId,
         date: {
-          gte: startDate,
-          lte: endDate,
+          gte: startAnchor,
+          lte: endAnchor,
         },
       },
       orderBy: {
@@ -846,6 +831,7 @@ export class TrainingLoadService {
 
     // Determine which athlete's training load to fetch
     let targetAthleteId: number;
+    let timeZone: string;
 
     if (athleteId) {
       // Check if user can access this athlete's data
@@ -862,6 +848,7 @@ export class TrainingLoadService {
       }
 
       targetAthleteId = athleteId;
+      timeZone = normalizeTimeZone(athlete.timezone);
     } else {
       // Use current user's athlete ID
       const athlete = await this.prisma.athlete.findFirst({
@@ -877,16 +864,17 @@ export class TrainingLoadService {
       }
 
       targetAthleteId = athlete.athleteId;
+      timeZone = normalizeTimeZone(athlete.timezone);
     }
 
-    // Get last 42 days of data for CTL calculation
-    const startDate = this.addUtcDays(targetDate, -42);
+    const targetAnchor = toDayAnchor(targetDate, timeZone);
+    // Get last 42 local calendar days of data for CTL calculation.
+    const startAnchor = addDaysAnchor(targetAnchor, -42);
 
-    const dailyLoads = await this.getTrainingLoadByPeriod(
-      user,
+    const dailyLoads = await this.getDailyLoadsForAnchors(
       calculationType,
-      startDate,
-      targetDate,
+      startAnchor,
+      targetAnchor,
       targetAthleteId,
     );
 
@@ -896,13 +884,11 @@ export class TrainingLoadService {
       loadMap.set(this.toDayKey(day.date), day.load);
     });
 
-    // Generate ALL days from startDate to targetDate (including days without
-    // activity). The grid walks whole UTC days so its keys line up with the
-    // stored entry dates whatever timezone the server runs in.
+    // Generate every day anchor, including rest days.
     const allDays: Array<{ date: Date; load: number }> = [];
     const dailyLoadLookup = new Map<string, number>();
-    let currentDate = this.startOfUtcDay(startDate);
-    const lastDay = this.startOfUtcDay(targetDate);
+    let currentDate = startAnchor;
+    const lastDay = targetAnchor;
 
     while (currentDate <= lastDay) {
       const dateKey = this.toDayKey(currentDate);
@@ -914,7 +900,7 @@ export class TrainingLoadService {
       });
       dailyLoadLookup.set(dateKey, load);
 
-      currentDate = this.addUtcDays(currentDate, 1);
+      currentDate = addDaysAnchor(currentDate, 1);
     }
 
     // Calculate exponentially weighted moving averages using ALL days (including rest days)
@@ -944,11 +930,9 @@ export class TrainingLoadService {
     }
 
     // Calculate recommended load range using ACWR-informed ramp logic
-    const normalizedTargetDate = this.startOfUtcDay(targetDate);
-
     const weeklyLoads = this.getRecentWeeklyLoads(
       dailyLoadLookup,
-      normalizedTargetDate,
+      targetAnchor,
     );
 
     // Calculate ACWR for recommendation adjustment
@@ -999,6 +983,7 @@ export class TrainingLoadService {
 
     // Determine which athlete's training load to fetch
     let targetAthleteId: number;
+    let timeZone: string;
 
     if (athleteId) {
       // Check if user can access this athlete's data
@@ -1015,6 +1000,7 @@ export class TrainingLoadService {
       }
 
       targetAthleteId = athleteId;
+      timeZone = normalizeTimeZone(athlete.timezone);
     } else {
       // Use current user's athlete ID
       const athlete = await this.prisma.athlete.findFirst({
@@ -1030,16 +1016,18 @@ export class TrainingLoadService {
       }
 
       targetAthleteId = athlete.athleteId;
+      timeZone = normalizeTimeZone(athlete.timezone);
     }
 
-    // Get data starting 42 days before startDate for proper CTL calculation
-    const extendedStartDate = this.addUtcDays(startDate, -42);
+    const firstRequestedDay = toDayAnchor(startDate, timeZone);
+    const lastRequestedDay = toDayAnchor(endDate, timeZone);
+    // Get data starting 42 calendar days earlier for proper CTL calculation.
+    const extendedStartDate = addDaysAnchor(firstRequestedDay, -42);
 
-    const dailyLoads = await this.getTrainingLoadByPeriod(
-      user,
+    const dailyLoads = await this.getDailyLoadsForAnchors(
       calculationType,
       extendedStartDate,
-      endDate,
+      lastRequestedDay,
       targetAthleteId,
     );
 
@@ -1049,12 +1037,10 @@ export class TrainingLoadService {
       loadMap.set(this.toDayKey(day.date), day.load);
     });
 
-    // Generate ALL days from extendedStartDate to endDate (including days
-    // without activity), walking whole UTC days so the keys match the stored
-    // entry dates in any server timezone.
+    // Generate every day anchor in the range, including rest days.
     const allDays: Array<{ date: Date; load: number }> = [];
-    let currentDate = this.startOfUtcDay(extendedStartDate);
-    const lastDay = this.startOfUtcDay(endDate);
+    let currentDate = extendedStartDate;
+    const lastDay = lastRequestedDay;
 
     while (currentDate <= lastDay) {
       const load = loadMap.get(this.toDayKey(currentDate)) || 0; // 0 for rest days
@@ -1064,7 +1050,7 @@ export class TrainingLoadService {
         load,
       });
 
-      currentDate = this.addUtcDays(currentDate, 1);
+      currentDate = addDaysAnchor(currentDate, 1);
     }
 
     if (allDays.length === 0) {
@@ -1082,11 +1068,6 @@ export class TrainingLoadService {
 
     let atl = 0;
     let ctl = 0;
-
-    // Compared against whole UTC days so a caller passing a mid-day instant
-    // still gets the day it asked for, rather than losing the first row.
-    const firstRequestedDay = this.startOfUtcDay(startDate);
-    const lastRequestedDay = this.startOfUtcDay(endDate);
 
     for (const day of allDays) {
       // Update EWMA (even for days with 0 load - this causes fitness decay)
@@ -1118,6 +1099,7 @@ export class TrainingLoadService {
     const ability = await this.abilities.getFor({ user });
 
     let targetAthleteId: number;
+    let timeZone: string;
 
     if (athleteId) {
       const athlete = await this.prisma.athlete.findUnique({
@@ -1133,6 +1115,7 @@ export class TrainingLoadService {
       }
 
       targetAthleteId = athleteId;
+      timeZone = normalizeTimeZone(athlete.timezone);
     } else {
       const athlete = await this.prisma.athlete.findFirst({
         where: {
@@ -1147,15 +1130,20 @@ export class TrainingLoadService {
       }
 
       targetAthleteId = athlete.athleteId;
+      timeZone = normalizeTimeZone(athlete.timezone);
     }
 
-    const normalizedStart = this.getWeekStart(startDate);
-    const normalizedEnd = this.addDays(this.getWeekStart(endDate), 6);
-    normalizedStart.setUTCHours(0, 0, 0, 0);
-    normalizedEnd.setUTCHours(23, 59, 59, 999);
-
-    const extendedStart = this.addDays(normalizedStart, -42);
-    extendedStart.setUTCHours(0, 0, 0, 0);
+    const normalizedStart = startOfWeekAnchor(toDayAnchor(startDate, timeZone));
+    const normalizedEnd = addDaysAnchor(
+      startOfWeekAnchor(toDayAnchor(endDate, timeZone)),
+      6,
+    );
+    const extendedStart = addDaysAnchor(normalizedStart, -42);
+    const eventWindowStart = dayRangeInstants(extendedStart, timeZone).start;
+    const eventWindowEnd = dayRangeInstants(
+      normalizedEnd,
+      timeZone,
+    ).endExclusive;
 
     const weekSummaries = new Map<
       string,
@@ -1170,10 +1158,10 @@ export class TrainingLoadService {
     for (
       let cursor = new Date(extendedStart);
       cursor <= normalizedEnd;
-      cursor = this.addDays(cursor, 7)
+      cursor = addDaysAnchor(cursor, 7)
     ) {
       const weekStart = new Date(cursor);
-      const weekEnd = this.addDays(weekStart, 6);
+      const weekEnd = addDaysAnchor(weekStart, 6);
       weekSummaries.set(weekStart.toISOString(), {
         weekStart,
         weekEnd,
@@ -1211,12 +1199,12 @@ export class TrainingLoadService {
       });
 
       for (const entry of entries) {
-        const weekStart = this.getWeekStart(entry.date);
+        const weekStart = startOfWeekAnchor(entry.date);
         const weekKey = weekStart.toISOString();
         const summary =
           weekSummaries.get(weekKey) ||
           (() => {
-            const weekEnd = this.addDays(weekStart, 6);
+            const weekEnd = addDaysAnchor(weekStart, 6);
             const placeholder = { weekStart, weekEnd, actual: 0, estimated: 0 };
             weekSummaries.set(weekKey, placeholder);
             return placeholder;
@@ -1235,8 +1223,8 @@ export class TrainingLoadService {
         event: {
           athleteId: targetAthleteId,
           startDate: {
-            gte: extendedStart,
-            lte: normalizedEnd,
+            gte: eventWindowStart,
+            lt: eventWindowEnd,
           },
           type: 'TRAINING',
         },
@@ -1256,13 +1244,13 @@ export class TrainingLoadService {
         continue;
       }
 
-      const eventDate = new Date(training.event.startDate);
-      const weekStart = this.getWeekStart(eventDate);
+      const eventDay = toDayAnchor(training.event.startDate, timeZone);
+      const weekStart = startOfWeekAnchor(eventDay);
       const weekKey = weekStart.toISOString();
       const summary =
         weekSummaries.get(weekKey) ||
         (() => {
-          const weekEnd = this.addDays(weekStart, 6);
+          const weekEnd = addDaysAnchor(weekStart, 6);
           const placeholder = { weekStart, weekEnd, actual: 0, estimated: 0 };
           weekSummaries.set(weekKey, placeholder);
           return placeholder;
@@ -1349,8 +1337,11 @@ export class TrainingLoadService {
       if (targetIndex < sortedSummaries.length) {
         recommendations[targetIndex] = recommendedRange;
       } else {
-        const nextWeekStart = this.addDays(sortedSummaries[index].weekStart, 7);
-        const nextWeekEnd = this.addDays(sortedSummaries[index].weekEnd, 7);
+        const nextWeekStart = addDaysAnchor(
+          sortedSummaries[index].weekStart,
+          7,
+        );
+        const nextWeekEnd = addDaysAnchor(sortedSummaries[index].weekEnd, 7);
         projectedFutureWeek = {
           weekStart: nextWeekStart,
           weekEnd: nextWeekEnd,
@@ -1464,21 +1455,5 @@ export class TrainingLoadService {
     }
 
     return { processed, errors };
-  }
-
-  private getWeekStart(date: Date): Date {
-    const source = new Date(date);
-    const utcDate = new Date(
-      Date.UTC(source.getFullYear(), source.getMonth(), source.getDate()),
-    );
-    const day = (utcDate.getUTCDay() + 6) % 7;
-    utcDate.setUTCDate(utcDate.getUTCDate() - day);
-    return utcDate;
-  }
-
-  private addDays(date: Date, days: number): Date {
-    const next = new Date(date);
-    next.setUTCDate(next.getUTCDate() + days);
-    return next;
   }
 }

@@ -82,27 +82,15 @@ if [ -n "$REDIS_URL" ]; then
   fi
 fi
 
-decode_secret "OPENAI_API_KEY"
 decode_secret "BREVO_API_KEY"
 decode_secret "GARMIN_CLIENT_SECRET"
 decode_secret "POLAR_CLIENT_SECRET"
 decode_secret "POLAR_WEBHOOK_SECRET_KEY"
-decode_secret "GOOGLE_GENERATIVE_AI_API_KEY"
-decode_secret "STRIPE_SECRET_KEY"
-decode_secret "STRIPE_WEBHOOK_SECRET"
 decode_secret "STRAVA_WEBHOOK_TOKEN"
 # decode_secret "SUUNTO_CLIENT_SECRET"
 # decode_secret "SUUNTO_SUBSCRIPTION_KEY"
 decode_secret "HASH_PEPPER"
-decode_secret "STRIPE_PUBLISHABLE_KEY"
-decode_secret "STRIPE_PRICE_IDS"
 decode_secret "BETTER_STACK_DSN"
-if [ -n "$STRIPE_PRICE_IDS" ]; then
-  if ! echo "$STRIPE_PRICE_IDS" | grep -qE '^\{".*"\}$'; then
-    STRIPE_PRICE_IDS=$(echo "$STRIPE_PRICE_IDS" | sed 's/^{//;s/}$//' | sed -E 's/([A-Z_]+):([^,}]+)/"\1":"\2"/g' | sed 's/^/{/;s/$/}/')
-    export STRIPE_PRICE_IDS
-  fi
-fi
 decode_secret "FIREBASE_FUNCTIONS_URL"
 
 cd /app/libs/database
@@ -117,4 +105,3 @@ fi
 
 cd /app/apps/api
 exec node dist/main.js
-

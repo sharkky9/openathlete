@@ -51,7 +51,7 @@ export function WorkoutSection({
 
   const existingWorkout = useMemo(() => {
     // Always use workoutSteps as source of truth when available (for both create and edit modes)
-    // This ensures that AI modifications are properly reflected in the UI
+    // Keep the editor in sync when workout steps change outside it.
     if (type === EVENT_TYPE.TRAINING && workoutSteps.length > 0) {
       // Create a stable content hash to detect actual changes
       const contentHash = JSON.stringify(workoutSteps);
@@ -168,7 +168,7 @@ export function WorkoutSection({
   // Use ref to track last cleaned steps to avoid infinite loops
   const lastCleanedStepsRef = useRef<string>('');
 
-  // Update ref when workoutSteps changes externally (e.g., from AI modification)
+  // Update the ref when workoutSteps changes externally.
   useEffect(() => {
     const currentHash = JSON.stringify(workoutSteps);
     lastCleanedStepsRef.current = currentHash;

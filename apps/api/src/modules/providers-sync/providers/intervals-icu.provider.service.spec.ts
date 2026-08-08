@@ -21,7 +21,12 @@ import { IntervalsIcuProviderService } from './intervals-icu.provider.service';
  * from.
  */
 interface ServiceInternals {
-  createClient: (apiKey: string) => { get: (path: string) => Promise<unknown> };
+  createClient: (apiKey: string) => {
+    get: (
+      path: string,
+      params?: Record<string, string | number | undefined>,
+    ) => Promise<unknown>;
+  };
 }
 
 const ATHLETE_ID = 42;
@@ -30,12 +35,38 @@ const USER: AuthUser = { userId: 7 } as AuthUser;
 function setup(
   env: Partial<Record<keyof ApiEnvSchemaType, string>> = {},
   athleteProfile: unknown = { id: 'i123456', name: 'Test Athlete' },
+  seedEntries: Array<{
+    trainingLoadEntryId: number;
+    date: Date;
+    activity: { event: { startDate: Date } };
+  }> = [],
 ) {
   const created: { accessToken: string; externalUserId?: string }[] = [];
+  const entries = seedEntries.map((entry) => ({ ...entry }));
 
   const prisma = {
     athlete: {
       findUnique: jest.fn().mockResolvedValue({ athleteId: ATHLETE_ID }),
+      update: jest.fn().mockResolvedValue({ athleteId: ATHLETE_ID }),
+    },
+    trainingLoadEntry: {
+      findMany: jest.fn().mockImplementation(async () => entries),
+      update: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { trainingLoadEntryId: number };
+          data: { date: Date };
+        }) => {
+          const entry = entries.find(
+            (candidate) =>
+              candidate.trainingLoadEntryId === where.trainingLoadEntryId,
+          );
+          if (entry) entry.date = data.date;
+          return entry;
+        },
+      ),
     },
     providerAccount: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -80,6 +111,7 @@ function setup(
           if (athleteProfile instanceof Error) {
             throw athleteProfile;
           }
+          if (path.includes('/activities')) return [];
           return athleteProfile;
         },
       };
@@ -220,6 +252,70 @@ describe('IntervalsIcuProviderService.connect', () => {
     const output = logged.join('\n');
     expect(output).not.toContain('another-secret-key');
     expect(output).toContain('request');
+  });
+
+  it('stores the profile timezone and idempotently re-anchors existing loads', async () => {
+    const { service, prisma } = setup(
+      {},
+      {
+        id: 'i123456',
+        name: 'Test Athlete',
+        timezone: 'America/Los_Angeles',
+      },
+      [
+        {
+          trainingLoadEntryId: 9,
+          date: new Date('2026-06-29T00:00:00Z'),
+          activity: {
+            event: { startDate: new Date('2026-06-29T02:00:00Z') },
+          },
+        },
+      ],
+    );
+
+    await service.connect(USER, 'request-key');
+    await service.connect(USER, 'request-key');
+
+    expect(prisma.athlete.update).toHaveBeenCalledWith({
+      where: { athleteId: ATHLETE_ID },
+      data: { timezone: 'America/Los_Angeles' },
+    });
+    expect(prisma.trainingLoadEntry.update).toHaveBeenCalledTimes(1);
+    expect(prisma.trainingLoadEntry.update).toHaveBeenCalledWith({
+      where: { trainingLoadEntryId: 9 },
+      data: { date: new Date('2026-06-28T00:00:00Z') },
+    });
+  });
+
+  it('refreshes the profile timezone whenever activities are imported', async () => {
+    const { service, prisma, pathsRequested } = setup(
+      {},
+      {
+        id: 'i123456',
+        timezone: 'America/Los_Angeles',
+      },
+    );
+
+    await service.importActivities(
+      {
+        providerAccountId: 1,
+        athleteId: ATHLETE_ID,
+        externalUserId: 'i123456',
+        accessToken: 'request-key',
+        status: 'active',
+      } as ProviderAccount,
+      {
+        startDate: new Date('2026-06-01T00:00:00Z'),
+        endDate: new Date('2026-06-02T00:00:00Z'),
+      },
+    );
+
+    expect(pathsRequested[0]).toBe('/athlete/i123456');
+    expect(pathsRequested).toContain('/athlete/i123456/activities');
+    expect(prisma.athlete.update).toHaveBeenCalledWith({
+      where: { athleteId: ATHLETE_ID },
+      data: { timezone: 'America/Los_Angeles' },
+    });
   });
 });
 
@@ -439,6 +535,153 @@ function importSetup(options: {
 
   return { service, prisma, events, activities, clientsBuilt };
 }
+
+function listedActivity(id: string, date: string) {
+  return {
+    id,
+    name: `Activity ${id}`,
+    type: 'Ride',
+    start_date: `${date}T08:00:00.000Z`,
+    elapsed_time: 3600,
+  };
+}
+
+describe('IntervalsIcuProviderService.importActivities', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('bisects a response near the API cap instead of accepting truncated history', async () => {
+    const service = new IntervalsIcuProviderService(
+      {} as PrismaService,
+      {} as ConfigService<ApiEnvSchemaType, true>,
+      {} as QueueService,
+    );
+    const requests: Record<string, string | number | undefined>[] = [];
+    jest
+      .spyOn(service as unknown as ServiceInternals, 'createClient')
+      .mockReturnValue({
+        get: async (path, params = {}) => {
+          if (!path.endsWith('/activities')) {
+            return {};
+          }
+
+          requests.push(params);
+          if (requests.length === 1) {
+            return Array.from({ length: 99 }, (_, index) =>
+              listedActivity(`truncated-${index}`, '2026-08-01'),
+            );
+          }
+
+          const isOlderHalf = String(params.oldest) < '2026-07-01';
+          return Array.from({ length: 60 }, (_, index) =>
+            listedActivity(
+              `${isOlderHalf ? 'older' : 'newer'}-${index}`,
+              isOlderHalf ? '2026-03-01' : '2026-09-01',
+            ),
+          );
+        },
+      });
+
+    const activities = await service.importActivities(ACCOUNT, {
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+    });
+
+    expect(activities).toHaveLength(120);
+    expect(activities.map((activity) => activity.externalId)).toEqual(
+      expect.arrayContaining(['older-0', 'newer-0']),
+    );
+    expect(
+      new Set(activities.map((activity) => activity.externalId)).size,
+    ).toBe(120);
+    expect(requests).toHaveLength(3);
+    expect(requests[0]).toMatchObject({
+      oldest: '2026-01-01',
+      newest: '2026-12-31',
+      limit: 100,
+    });
+    const splitRequests = requests
+      .slice(1)
+      .sort((a, b) => String(a.oldest).localeCompare(String(b.oldest)));
+    const olderEnd = Date.parse(`${String(splitRequests[0].newest)}T00:00:00Z`);
+    const newerStart = Date.parse(
+      `${String(splitRequests[1].oldest)}T00:00:00Z`,
+    );
+    expect(newerStart - olderEnd).toBe(DAY_MS);
+  });
+
+  it('polls recent activities and queues only new ones as non-bulk work', async () => {
+    const existing = listedActivity('existing', '2026-08-01');
+    const newActivity = listedActivity('new', '2026-08-02');
+    const prisma = {
+      athlete: {
+        update: jest.fn().mockResolvedValue(undefined),
+      },
+      trainingLoadEntry: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      eventActivity: {
+        findMany: jest.fn().mockResolvedValue([{ externalId: existing.id }]),
+      },
+    } as unknown as PrismaService;
+    const queueService = {
+      assertActivityPipelineAvailable: jest.fn(),
+      addActivityImportJobs: jest.fn().mockResolvedValue(1),
+    } as unknown as QueueService;
+    const service = new IntervalsIcuProviderService(
+      prisma,
+      {} as ConfigService<ApiEnvSchemaType, true>,
+      queueService,
+    );
+    const paths: string[] = [];
+    jest
+      .spyOn(service as unknown as ServiceInternals, 'createClient')
+      .mockReturnValue({
+        get: async (path) => {
+          paths.push(path);
+          return path.endsWith('/activities')
+            ? [existing, newActivity]
+            : { id: 'i123456' };
+        },
+      });
+
+    await expect(service.queueIncrementalImport(ACCOUNT)).resolves.toEqual({
+      queuedActivities: 1,
+    });
+
+    expect(paths).toContain('/athlete/0/activities');
+    expect(queueService.assertActivityPipelineAvailable).toHaveBeenCalled();
+    expect(queueService.addActivityImportJobs).toHaveBeenCalledWith(
+      ACCOUNT,
+      [expect.objectContaining({ externalId: 'new' })],
+      false,
+    );
+  });
+
+  it('fails closed when even a single-day response may be truncated', async () => {
+    const service = new IntervalsIcuProviderService(
+      {} as PrismaService,
+      {} as ConfigService<ApiEnvSchemaType, true>,
+      {} as QueueService,
+    );
+    jest
+      .spyOn(service as unknown as ServiceInternals, 'createClient')
+      .mockReturnValue({
+        get: async () =>
+          Array.from({ length: 99 }, (_, index) =>
+            listedActivity(`dense-${index}`, '2026-08-01'),
+          ),
+      });
+
+    await expect(
+      service.importActivities(ACCOUNT, {
+        startDate: new Date('2026-08-01T00:00:00.000Z'),
+        endDate: new Date('2026-08-01T23:59:59.000Z'),
+      }),
+    ).rejects.toThrow('response may be truncated');
+  });
+});
 
 const WATTS_STREAM = [
   { type: 'time', data: [0, 1, 2, 3] },

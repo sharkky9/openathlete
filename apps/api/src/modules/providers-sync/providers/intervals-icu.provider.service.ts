@@ -10,6 +10,7 @@ import {
 } from '@openathlete/database';
 import { ActivityStream, ApiEnvSchemaType } from '@openathlete/shared';
 
+import { isValidTimeZone, toDayAnchor } from 'src/common/utils/day-anchor';
 import { AuthUser } from 'src/modules/auth/decorators/user.decorator';
 
 import { compressActivityStream } from '../../core/helpers/activity-stream';
@@ -64,10 +65,14 @@ const DEFAULT_IMPORT_LOOKBACK_DAYS = 30;
 const FULL_IMPORT_FLOOR = new Date('2000-01-01T00:00:00.000Z');
 
 /**
- * Activity listing has no pagination — only a date range and a `limit` that
- * truncates the *oldest* end. So history is walked in fixed date windows.
+ * Activity listing has no cursor pagination — only a date range and a `limit`
+ * that truncates the oldest end. Large windows are bisected whenever a
+ * response approaches that limit, so a truncated response can never masquerade
+ * as the whole range.
  */
 const IMPORT_WINDOW_DAYS = 365;
+const IMPORT_RESPONSE_LIMIT = 100;
+const IMPORT_SPLIT_THRESHOLD = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -235,6 +240,78 @@ export class IntervalsIcuProviderService
   }
 
   /**
+   * Persist the provider's current IANA zone and repair every stored day label.
+   *
+   * CTL and ATL are derived on reads; neither value is persisted or memoized.
+   * The only historical state that needs repair is therefore each entry's
+   * `date`, re-derived independently from its activity event's immutable start
+   * instant. Updating only changed rows makes this safe to rerun after an
+   * interrupted import and whenever Intervals.icu reports a changed home zone.
+   */
+  private async synchronizeAthleteTimezone(
+    athleteId: number,
+    candidateTimeZone?: string | null,
+  ): Promise<void> {
+    const timeZone = candidateTimeZone?.trim();
+    if (!timeZone) return;
+
+    if (!isValidTimeZone(timeZone)) {
+      this.logger.warn(
+        `Ignoring invalid Intervals.icu timezone "${timeZone}" for athlete ${athleteId}`,
+      );
+      return;
+    }
+
+    await this.prisma.athlete.update({
+      where: { athleteId },
+      data: { timezone: timeZone },
+    });
+
+    const entries = await this.prisma.trainingLoadEntry.findMany({
+      where: {
+        calculation: { athleteId },
+      },
+      select: {
+        trainingLoadEntryId: true,
+        date: true,
+        activity: {
+          select: {
+            event: { select: { startDate: true } },
+          },
+        },
+      },
+    });
+
+    let updated = 0;
+    for (const entry of entries) {
+      const date = toDayAnchor(entry.activity.event.startDate, timeZone);
+      if (date.getTime() === entry.date.getTime()) continue;
+
+      await this.prisma.trainingLoadEntry.update({
+        where: { trainingLoadEntryId: entry.trainingLoadEntryId },
+        data: { date },
+      });
+      updated++;
+    }
+
+    if (updated > 0) {
+      this.logger.log(
+        `Re-anchored ${updated} training-load entries to ${timeZone} for athlete ${athleteId}`,
+      );
+    }
+  }
+
+  private async refreshAthleteTimezone(
+    account: ProviderAccount,
+    client: IntervalsIcuApiClient,
+  ): Promise<void> {
+    const profile = await client.get<IntervalsIcuAthlete>(
+      `/athlete/${encodeURIComponent(this.athleteIdFor(account))}`,
+    );
+    await this.synchronizeAthleteTimezone(account.athleteId, profile.timezone);
+  }
+
+  /**
    * Resolve the credential to connect with.
    *
    * A key supplied in the request always wins. Only when none is supplied do we
@@ -319,6 +396,8 @@ export class IntervalsIcuProviderService
         ? profile.id
         : requestedAthleteId;
 
+    await this.synchronizeAthleteTimezone(athlete.athleteId, profile.timezone);
+
     // The key itself is never logged — only where it came from.
     this.logger.log(
       `Connected Intervals.icu athlete ${externalUserId} for OpenAthlete athlete ${athlete.athleteId} (API key from ${credentials.usedEnvFallback ? 'INTERVALS_ICU_API_KEY' : 'request'})`,
@@ -347,6 +426,10 @@ export class IntervalsIcuProviderService
     const client = await this.clientForAccount(account);
     const athleteId = this.athleteIdFor(account);
 
+    // Imports are explicit rather than scheduled, so this is the refresh point
+    // for a changed Intervals.icu profile timezone.
+    await this.refreshAthleteTimezone(account, client);
+
     const endDate = options?.endDate ?? new Date();
     const startDate =
       options?.startDate ??
@@ -366,12 +449,11 @@ export class IntervalsIcuProviderService
         ),
       );
 
-      const activities = await client.get<IntervalsIcuActivity[]>(
-        `/athlete/${encodeURIComponent(athleteId)}/activities`,
-        {
-          oldest: toIntervalsIcuDate(windowStart),
-          newest: toIntervalsIcuDate(windowEnd),
-        },
+      const activities = await this.fetchCompleteActivityWindow(
+        client,
+        athleteId,
+        windowStart,
+        windowEnd,
       );
 
       for (const activity of activities ?? []) {
@@ -395,6 +477,56 @@ export class IntervalsIcuProviderService
     }
 
     return imported;
+  }
+
+  private async fetchCompleteActivityWindow(
+    client: IntervalsIcuApiClient,
+    athleteId: string,
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<IntervalsIcuActivity[]> {
+    const oldest = toIntervalsIcuDate(windowStart);
+    const newest = toIntervalsIcuDate(windowEnd);
+    const activities =
+      (await client.get<IntervalsIcuActivity[]>(
+        `/athlete/${encodeURIComponent(athleteId)}/activities`,
+        {
+          oldest,
+          newest,
+          limit: IMPORT_RESPONSE_LIMIT,
+        },
+      )) ?? [];
+
+    if (activities.length < IMPORT_SPLIT_THRESHOLD) {
+      return activities;
+    }
+
+    const startDay = Date.parse(`${oldest}T00:00:00.000Z`);
+    const endDay = Date.parse(`${newest}T00:00:00.000Z`);
+    if (startDay >= endDay) {
+      throw new Error(
+        `Intervals.icu returned ${activities.length} activities for ${oldest}; the response may be truncated and cannot be paginated safely`,
+      );
+    }
+
+    const daySpan = Math.floor((endDay - startDay) / DAY_MS);
+    const midpoint = new Date(startDay + Math.floor(daySpan / 2) * DAY_MS);
+    const newerStart = new Date(midpoint.getTime() + DAY_MS);
+
+    const olderActivities = await this.fetchCompleteActivityWindow(
+      client,
+      athleteId,
+      new Date(startDay),
+      midpoint,
+    );
+    const newerActivities = await this.fetchCompleteActivityWindow(
+      client,
+      athleteId,
+      newerStart,
+      new Date(endDay),
+    );
+
+    return [...newerActivities, ...olderActivities];
   }
 
   private toImportedActivity(
@@ -685,7 +817,7 @@ export class IntervalsIcuProviderService
       return { queuedActivities: 0 };
     }
 
-    const queued = await this.enqueueActivities(account, activities);
+    const queued = await this.enqueueActivities(account, activities, true);
 
     this.logger.log(
       `Queued ${queued} Intervals.icu activities for import (out of ${activities.length} total)`,
@@ -694,9 +826,30 @@ export class IntervalsIcuProviderService
     return { queuedActivities: queued };
   }
 
+  /**
+   * Poll the recent Intervals.icu history and queue only activities that are not
+   * already stored. Personal API-key connections cannot receive webhooks, so
+   * this is the automatic-sync seam used by the scheduler.
+   */
+  async queueIncrementalImport(
+    account: ProviderAccount,
+  ): Promise<FullImportResult> {
+    this.queueService.assertActivityPipelineAvailable();
+
+    const activities = await this.importActivities(account);
+    const queued = await this.enqueueActivities(account, activities, false);
+
+    this.logger.log(
+      `Queued ${queued} new Intervals.icu activities for account ${account.providerAccountId}`,
+    );
+
+    return { queuedActivities: queued };
+  }
+
   private async enqueueActivities(
     account: ProviderAccount,
     activities: ImportedActivity[],
+    bulkImport: boolean,
   ): Promise<number> {
     if (activities.length === 0) {
       return 0;
@@ -719,7 +872,10 @@ export class IntervalsIcuProviderService
       return 0;
     }
 
-    await this.queueService.addActivityImportJobs(account, newActivities, true);
-    return newActivities.length;
+    return this.queueService.addActivityImportJobs(
+      account,
+      newActivities,
+      bulkImport,
+    );
   }
 }

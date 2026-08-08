@@ -2,7 +2,6 @@ import { DashboardLayout } from '@/components/layouts';
 import { LoadingScreen } from '@/components/loading-screen';
 import { AuthGuard } from '@/guards';
 import { SettingsPage } from '@/pages/dashboard/settings';
-import { SummaryPage } from '@/pages/dashboard/summary/athlete';
 import { Suspense, lazy } from 'react';
 import { Outlet, RouteObject } from 'react-router-dom';
 
@@ -133,10 +132,6 @@ export const dashboardRoutes: RouteObject[] = [
       {
         path: getPath(['dashboard', 'calendar', 'athleteId']),
         element: <AthleteCalendarPage />,
-      },
-      {
-        path: getPath(['dashboard', 'summary', 'athleteId']),
-        element: <SummaryPage />,
       },
       {
         path: getPath(['dashboard', 'statistics']),

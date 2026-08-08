@@ -60,7 +60,6 @@ import { MessageService } from 'src/modules/messages/services/message.service';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
 
 import { ProviderExportService } from '../../providers-sync/export.service';
-import { TrainingLoadEstimationService } from '../../queue/services/training-load-estimation.service';
 import {
   reductActivityStreamToResolution,
   uncompressActivityStream,
@@ -83,9 +82,6 @@ export class EventService {
     private readonly providerExportService: ProviderExportService,
     @Inject(forwardRef(() => WorkoutService))
     private workoutService: WorkoutService,
-    @Optional()
-    @Inject(forwardRef(() => TrainingLoadEstimationService))
-    private trainingLoadEstimationService?: TrainingLoadEstimationService,
     @Optional()
     private readonly calendarWebSocketService?: CalendarWebSocketService,
   ) {
@@ -341,28 +337,6 @@ export class EventService {
       );
     }
 
-    // Schedule training load estimation for future training events
-    if (
-      type === 'TRAINING' &&
-      created.training &&
-      created.startDate > startOfDay(new Date()) &&
-      this.trainingLoadEstimationService
-    ) {
-      this.trainingLoadEstimationService
-        .scheduleEstimation(
-          created.eventId,
-          created.training.eventTrainingId,
-          finalAthleteId,
-        )
-        .catch((error) => {
-          // Log but don't fail the request
-          this.logger.error(
-            `Failed to schedule training load estimation: ${error instanceof Error ? error.message : String(error)}`,
-            error instanceof Error ? error.stack : undefined,
-          );
-        });
-    }
-
     return this.getEventById(user, created.eventId);
   }
 
@@ -532,30 +506,6 @@ export class EventService {
           );
         }
       }
-    }
-
-    // Schedule training load estimation for future training events (skip for templates)
-    if (
-      !isTemplate &&
-      event.type === 'TRAINING' &&
-      event.training &&
-      updatedEvent.startDate > startOfDay(new Date()) &&
-      this.trainingLoadEstimationService &&
-      event.training.estimatedLoad === null
-    ) {
-      this.trainingLoadEstimationService
-        .scheduleEstimation(
-          eventId,
-          event.training.eventTrainingId,
-          event.athleteId!,
-        )
-        .catch((error) => {
-          // Log but don't fail the request
-          this.logger.error(
-            `Failed to schedule training load estimation: ${error instanceof Error ? error.message : String(error)}`,
-            error instanceof Error ? error.stack : undefined,
-          );
-        });
     }
 
     // If date changed and there's a workout, emit event for new date too (skip for templates)
@@ -1186,34 +1136,6 @@ export class EventService {
           });
         }
       }
-    }
-
-    // Get the final duplicated event with updated dates
-    const finalDuplicatedEvent = await this.prisma.event.findUnique({
-      where: { eventId: duplicatedEvent.eventId },
-      include: EVENT_INCLUDES,
-    });
-
-    // Schedule training load estimation for future training events
-    if (
-      originalEvent.type === 'TRAINING' &&
-      finalDuplicatedEvent?.training &&
-      finalDuplicatedEvent.startDate > startOfDay(new Date()) &&
-      this.trainingLoadEstimationService
-    ) {
-      this.trainingLoadEstimationService
-        .scheduleEstimation(
-          duplicatedEvent.eventId,
-          finalDuplicatedEvent.training.eventTrainingId,
-          originalEvent.athleteId!,
-        )
-        .catch((error) => {
-          // Log but don't fail the request
-          this.logger.error(
-            `Failed to schedule training load estimation: ${error instanceof Error ? error.message : String(error)}`,
-            error instanceof Error ? error.stack : undefined,
-          );
-        });
     }
 
     // Notify websocket for training load reload (same as updateEvent)

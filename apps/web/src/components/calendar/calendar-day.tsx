@@ -1,5 +1,4 @@
 import { useDuplicateEventMutation } from '@/api/event';
-import { useFeatureAccess } from '@/hooks/use-feature-access';
 import { m } from '@/paraglide/messages';
 import { cn } from '@/utils/shadcn';
 import { useDroppable } from '@dnd-kit/core';
@@ -10,12 +9,10 @@ import {
   FileText,
   StickyNote,
 } from 'lucide-react';
-import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { EVENT_TYPE, Event, FeatureName } from '@openathlete/shared';
+import { EVENT_TYPE, Event } from '@openathlete/shared';
 
-import { PaywallDialog } from '../paywall';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -23,7 +20,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '../ui/context-menu';
-import { SparklesIcon } from '../ui/sparkles-icon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { CalendarCycleSegment } from './calendar-cycle-segment';
 import { CalendarEvent } from './calendar-event';
@@ -43,7 +39,6 @@ export function CalendarDay({ day, events, cycleSegments = [] }: P) {
     createEvent,
     allowCreate,
     createEventFromTemplate,
-    createEventWithAI,
     dragSelection,
     setDragSelection,
     createCycle,
@@ -51,10 +46,6 @@ export function CalendarDay({ day, events, cycleSegments = [] }: P) {
     setCycleResize,
   } = useCalendarContext();
   const { clipboard, hasClipboard } = useEventClipboard();
-  const { hasAccess: hasAIAccess } = useFeatureAccess(
-    FeatureName.AI_GENERATION,
-  );
-  const [paywallOpen, setPaywallOpen] = useState(false);
   const duplicateEventMutation = useDuplicateEventMutation({
     onSuccess: () => {
       toast.success(m.event_created_successfully());
@@ -268,19 +259,6 @@ export function CalendarDay({ day, events, cycleSegments = [] }: P) {
               )}
             </Tooltip>
             <ContextMenuSeparator />
-            <ContextMenuItem
-              onClick={() => {
-                if (hasAIAccess) {
-                  createEventWithAI(day);
-                } else {
-                  setPaywallOpen(true);
-                }
-              }}
-            >
-              <SparklesIcon className="w-4 h-4 mr-2" />
-              {m.create_with_ai()}
-            </ContextMenuItem>
-            <ContextMenuSeparator />
             <ContextMenuItem onClick={() => createEventFromTemplate(day)}>
               <FileText className="w-4 h-4 mr-2" />
               {m.set_a_template()}
@@ -305,12 +283,6 @@ export function CalendarDay({ day, events, cycleSegments = [] }: P) {
           </ContextMenuContent>
         )}
       </ContextMenu>
-      <PaywallDialog
-        open={paywallOpen}
-        onOpenChange={setPaywallOpen}
-        reason="ai-feature"
-        analyticsSource="calendar_day"
-      />
     </div>
   );
 }

@@ -1,7 +1,5 @@
 'use client';
 
-import corosLogo from '@/assets/providers/coros.png';
-import corosDarkLogo from '@/assets/providers/coros_dark.png';
 import garminLogo from '@/assets/providers/garmin.svg';
 import garminDarkLogo from '@/assets/providers/garmin_dark.svg';
 import polarLogo from '@/assets/providers/polar.svg';
@@ -50,22 +48,6 @@ export function SuuntoLogo({ className }: { className?: string }) {
       className={className || 'h-6 w-auto'}
       width={100}
       height={24}
-    />
-  );
-}
-
-export function CorosLogo({ className }: { className?: string }) {
-  const { resolvedTheme } = useTheme();
-  const logo = resolvedTheme === 'dark' ? corosDarkLogo : corosLogo;
-
-  return (
-    <Image
-      src={logo}
-      alt="Coros"
-      className={className || 'h-6 w-auto'}
-      width={100}
-      height={40}
-      style={{ objectFit: 'contain' }}
     />
   );
 }

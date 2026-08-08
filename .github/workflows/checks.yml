@@ -69,8 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     # Reports on the delta, not the absolute count. A plain
     # `pnpm audit --audit-level=high --prod` is red today and stays red: the
-    # production tree carries ~96 distinct high/critical advisories, almost all
-    # of them deep transitive dependencies of @getbrevo/brevo and @mastra/core.
+    # production tree still carries more than 100 high/critical audit findings,
+    # represented by 88 advisory IDs in the committed baseline.
     # A permanently-red check just teaches people to ignore checks, and a
     # permanently-suppressed one is no better. So the known set is recorded in
     # .github/dependency-audit-baseline.json and this job fails only on

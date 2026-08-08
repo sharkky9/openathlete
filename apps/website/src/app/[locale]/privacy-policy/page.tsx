@@ -70,7 +70,6 @@ export default async function PrivacyPolicyPage({
             <li>{m.privacy_policy_data_we_collect_list_4()}</li>
             <li>{m.privacy_policy_data_we_collect_list_5()}</li>
             <li>{m.privacy_policy_data_we_collect_list_6()}</li>
-            <li>{m.privacy_policy_data_we_collect_list_7()}</li>
             <li>{m.privacy_policy_data_we_collect_list_8()}</li>
           </ul>
 

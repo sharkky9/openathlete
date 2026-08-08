@@ -72,10 +72,20 @@ export class ActivityImportProcessor extends WorkerHost {
       }
 
       if (!account.importActivitiesEnabled) {
-        this.logger.debug(
-          `Skipping import for provider account ${providerAccountId}: import disabled`,
+        throw new Error(
+          `Importing activities is disabled for provider account ${providerAccountId}`,
         );
-        return;
+      }
+
+      const accountRunId =
+        bulkImport && !account.fullImportCompletedAt
+          ? account.fullImportRequestedAt?.getTime().toString()
+          : undefined;
+      const fullImportRunId = bulkImport
+        ? (accountRunId ?? job.data.fullImportRunId)
+        : undefined;
+      if (fullImportRunId !== job.data.fullImportRunId) {
+        await job.updateData({ ...job.data, fullImportRunId });
       }
 
       await job.updateProgress(30);
@@ -163,6 +173,9 @@ export class ActivityImportProcessor extends WorkerHost {
         savedActivity.eventActivityId,
         savedActivity.eventId,
         bulkImport,
+        fullImportRunId
+          ? { providerAccountId, runId: fullImportRunId }
+          : undefined,
       );
 
       return {

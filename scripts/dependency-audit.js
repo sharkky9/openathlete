@@ -3,9 +3,8 @@
  * Dependency audit with a committed baseline.
  *
  * `pnpm audit --audit-level=high --prod` is red today and will stay red for a
- * long time: the production tree carries ~100 high/critical advisories, almost
- * all of them deep transitive dependencies of `@getbrevo/brevo` and
- * `@mastra/core`. A check that is permanently red teaches people to ignore
+ * long time: the production tree still carries more than 100 high/critical
+ * audit findings. A check that is permanently red teaches people to ignore
  * checks, so this wrapper reports on the *delta* instead.
  *
  * It fails only when a high or critical advisory appears that is not already
@@ -17,7 +16,7 @@
  * the tree, and any new high/critical advisory pulled in by a dependency
  * change.
  *
- * What this does NOT catch: the existing ~96 baselined advisories (that is the
+ * What this does NOT catch: the existing 88 baselined advisory IDs (that is the
  * point — they are tracked debt, not a per-pull-request signal), and anything
  * at moderate severity or below.
  *

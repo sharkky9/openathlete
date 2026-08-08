@@ -27,7 +27,7 @@ import { MessageCircle, Plus, Trash2 } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { AgentThread, MessageThread } from '@openathlete/shared';
+import { MessageThread } from '@openathlete/shared';
 
 type ThreadFilter = 'all' | 'unread';
 
@@ -273,15 +273,12 @@ export function MessagesPage() {
           </div>
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-2 space-y-1">
-              {threads?.map((thread: AgentThread | MessageThread) => {
-                const threadId = (thread as MessageThread).messageThreadId;
+              {threads?.map((thread: MessageThread) => {
+                const threadId = thread.messageThreadId;
                 const threadTitle = thread.title;
                 const threadCreatedAt = thread.createdAt;
                 const unreadCount = currentUser
-                  ? calculateUnreadCount(
-                      thread as MessageThread,
-                      currentUser.userId,
-                    )
+                  ? calculateUnreadCount(thread, currentUser.userId)
                   : 0;
                 return (
                   <motion.button
@@ -440,15 +437,12 @@ export function MessagesPage() {
 
         <ScrollArea className="flex-1 min-h-0">
           <div className="p-2 space-y-1">
-            {threads?.map((thread: AgentThread | MessageThread) => {
-              const threadId = (thread as MessageThread).messageThreadId;
+            {threads?.map((thread: MessageThread) => {
+              const threadId = thread.messageThreadId;
               const threadTitle = thread.title;
               const threadCreatedAt = thread.createdAt;
               const unreadCount = currentUser
-                ? calculateUnreadCount(
-                    thread as MessageThread,
-                    currentUser.userId,
-                  )
+                ? calculateUnreadCount(thread, currentUser.userId)
                 : 0;
               return (
                 <motion.button

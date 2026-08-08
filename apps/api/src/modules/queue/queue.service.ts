@@ -1,9 +1,15 @@
 import { Queue } from 'bullmq';
 
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { ProviderAccount } from '@openathlete/database';
+import { ApiEnvSchemaType } from '@openathlete/shared';
 
 import { ImportedActivity } from '../providers-sync/base/provider-import.interface';
 
@@ -11,12 +17,15 @@ export interface ActivityImportJobData {
   providerAccountId: number;
   activity: ImportedActivity;
   bulkImport?: boolean;
+  fullImportRunId?: string;
 }
 
 export interface ActivityProcessingJobData {
   eventActivityId: number;
   eventId: number;
   bulkImport?: boolean;
+  providerAccountId?: number;
+  fullImportRunId?: string;
 }
 
 @Injectable()
@@ -28,7 +37,34 @@ export class QueueService {
     private readonly activityImportQueue: Queue<ActivityImportJobData>,
     @InjectQueue('activity-processing')
     private readonly activityProcessingQueue: Queue<ActivityProcessingJobData>,
+    private readonly configService: ConfigService<ApiEnvSchemaType, true>,
   ) {}
+
+  assertActivityPipelineAvailable(): void {
+    const disabledConsumers: string[] = [];
+    if (this.configService.get('ENABLE_ACTIVITY_IMPORT') !== true) {
+      disabledConsumers.push('activity import');
+    }
+    if (this.configService.get('ENABLE_ACTIVITY_PROCESSING') !== true) {
+      disabledConsumers.push('activity processing');
+    }
+
+    if (disabledConsumers.length > 0) {
+      throw new ServiceUnavailableException(
+        `Activity import is unavailable because ${disabledConsumers.join(
+          ' and ',
+        )} ${disabledConsumers.length === 1 ? 'is' : 'are'} disabled`,
+      );
+    }
+  }
+
+  private fullImportRunId(
+    account: ProviderAccount,
+    bulkImport: boolean,
+  ): string | undefined {
+    if (!bulkImport || account.fullImportCompletedAt) return undefined;
+    return account.fullImportRequestedAt?.getTime().toString();
+  }
 
   private calculatePriority(startDate: string | Date): number {
     const activityDate = new Date(startDate);
@@ -46,10 +82,13 @@ export class QueueService {
     account: ProviderAccount,
     activity: ImportedActivity,
     bulkImport = false,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
+      this.assertActivityPipelineAvailable();
+
       const priority = this.calculatePriority(activity.startDate);
       const jobId = `import-${account.provider}-${activity.externalId}`;
+      const fullImportRunId = this.fullImportRunId(account, bulkImport);
 
       let existingJob;
       try {
@@ -67,7 +106,13 @@ export class QueueService {
           if (state === 'completed' || state === 'failed') {
             await existingJob.remove();
           } else {
-            return;
+            if (fullImportRunId) {
+              await existingJob.updateData({
+                ...existingJob.data,
+                fullImportRunId,
+              });
+            }
+            return false;
           }
         } catch (error) {
           this.logger.error(
@@ -83,12 +128,14 @@ export class QueueService {
           providerAccountId: account.providerAccountId,
           activity,
           bulkImport,
+          fullImportRunId,
         },
         {
           priority,
           jobId,
         },
       );
+      return true;
     } catch (error) {
       this.logger.error(
         `Failed to add activity import job for ${activity.externalId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -102,8 +149,11 @@ export class QueueService {
     account: ProviderAccount,
     activities: ImportedActivity[],
     bulkImport = false,
-  ): Promise<void> {
+  ): Promise<number> {
     try {
+      this.assertActivityPipelineAvailable();
+
+      const fullImportRunId = this.fullImportRunId(account, bulkImport);
       const sortedActivities = [...activities].sort(
         (a, b) =>
           new Date(b.startDate).getTime() - new Date(a.startDate).getTime(),
@@ -124,6 +174,7 @@ export class QueueService {
           this.logger.error(
             `Failed to check for existing job ${jobId}: ${error instanceof Error ? error.message : String(error)}`,
           );
+          throw error;
         }
 
         if (existingJob) {
@@ -132,12 +183,19 @@ export class QueueService {
             if (state === 'completed' || state === 'failed') {
               await existingJob.remove();
             } else {
+              if (fullImportRunId) {
+                await existingJob.updateData({
+                  ...existingJob.data,
+                  fullImportRunId,
+                });
+              }
               continue;
             }
           } catch (error) {
             this.logger.error(
               `Failed to check/remove existing job ${jobId}: ${error instanceof Error ? error.message : String(error)}`,
             );
+            throw error;
           }
         }
 
@@ -148,6 +206,7 @@ export class QueueService {
             providerAccountId: account.providerAccountId,
             activity,
             bulkImport,
+            fullImportRunId,
           },
           opts: {
             priority,
@@ -157,7 +216,7 @@ export class QueueService {
       }
 
       if (jobsToAdd.length === 0) {
-        return;
+        return 0;
       }
 
       await this.activityImportQueue.addBulk(jobsToAdd);
@@ -165,6 +224,7 @@ export class QueueService {
       this.logger.log(
         `Added ${jobsToAdd.length} activity import jobs for provider ${account.provider}`,
       );
+      return jobsToAdd.length;
     } catch (error) {
       this.logger.error(
         `Failed to add activity import jobs for provider ${account.provider}: ${error instanceof Error ? error.message : String(error)}`,
@@ -178,12 +238,21 @@ export class QueueService {
     eventActivityId: number,
     eventId: number,
     bulkImport = false,
+    fullImport?: { providerAccountId: number; runId: string },
   ): Promise<void> {
     try {
+      if (this.configService.get('ENABLE_ACTIVITY_PROCESSING') !== true) {
+        throw new ServiceUnavailableException(
+          'Activity processing is unavailable because activity processing is disabled',
+        );
+      }
+
       await this.activityProcessingQueue.add('process', {
         eventActivityId,
         eventId,
         bulkImport,
+        providerAccountId: fullImport?.providerAccountId,
+        fullImportRunId: fullImport?.runId,
       });
     } catch (error) {
       this.logger.error(

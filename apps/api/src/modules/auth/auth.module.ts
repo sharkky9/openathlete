@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -6,7 +6,6 @@ import { PassportModule } from '@nestjs/passport';
 import { ApiEnvSchemaType } from '@openathlete/shared';
 
 import { PrismaService } from '../prisma/services/prisma.service';
-import { SubscriptionModule } from '../subscription';
 import { AuthController, UserController } from './controllers';
 import { ThrottleGuard, UserTypeGuard } from './guards';
 import { AuthService, CaslAbilityFactory, UserService } from './services';
@@ -26,7 +25,6 @@ import { JwtStrategy } from './strategies';
         secret: configService.getOrThrow('JWT_SECRET_KEY'),
       }),
     }),
-    forwardRef(() => SubscriptionModule),
   ],
   controllers: [AuthController, UserController],
   providers: [

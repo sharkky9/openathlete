@@ -11,9 +11,9 @@ import { PrismaService } from '../prisma/services/prisma.service';
 import { ProvidersSyncModule } from '../providers-sync/providers-sync.module';
 import { ActivityImportProcessor } from './processors/activity-import.processor';
 import { ActivityProcessingProcessor } from './processors/activity-processing.processor';
-import { TrainingLoadEstimationProcessor } from './processors/training-load-estimation.processor';
+import { FullImportCompletionProcessor } from './processors/full-import-completion.processor';
 import { QueueService } from './queue.service';
-import { TrainingLoadEstimationService } from './services/training-load-estimation.service';
+import { FullImportCompletionService } from './services/full-import-completion.service';
 
 function parseRedisUrl(redisUrl: string): {
   host: string;
@@ -254,17 +254,14 @@ function parseRedisUrl(redisUrl: string): {
       },
     }),
     BullModule.registerQueue({
-      name: 'training-load-estimation',
+      name: 'full-import-completion',
       defaultJobOptions: {
         attempts: 3,
         backoff: {
           type: 'exponential',
           delay: 2000,
         },
-        removeOnComplete: {
-          age: 24 * 3600,
-          count: 1000,
-        },
+        removeOnComplete: true,
         removeOnFail: {
           age: 7 * 24 * 3600,
         },
@@ -274,7 +271,7 @@ function parseRedisUrl(redisUrl: string): {
   providers: [
     PrismaService,
     QueueService,
-    TrainingLoadEstimationService,
+    FullImportCompletionService,
     // Note: We use process.env here because ConfigService is not available
     // at module definition time. The value is validated by envValidationSchema.
     ...(process.env.ENABLE_ACTIVITY_IMPORT === 'true'
@@ -283,10 +280,11 @@ function parseRedisUrl(redisUrl: string): {
     ...(process.env.ENABLE_ACTIVITY_PROCESSING === 'true'
       ? [ActivityProcessingProcessor]
       : []),
-    ...(process.env.ENABLE_TRAINING_LOAD_ESTIMATION === 'true'
-      ? [TrainingLoadEstimationProcessor]
+    ...(process.env.ENABLE_ACTIVITY_IMPORT === 'true' &&
+    process.env.ENABLE_ACTIVITY_PROCESSING === 'true'
+      ? [FullImportCompletionProcessor]
       : []),
   ],
-  exports: [QueueService, TrainingLoadEstimationService],
+  exports: [QueueService, FullImportCompletionService],
 })
 export class QueueModule {}

@@ -19,10 +19,12 @@ export interface GetOAuthUriResponse {
 }
 
 export interface ImportAllActivitiesResponse {
-  success: boolean;
+  status: 'accepted' | 'completed';
+  completed: boolean;
   message?: string;
   queuedActivities?: number;
   backfillRequested?: boolean;
+  recoveredProcessingJobs?: number;
 }
 
 export class ProviderAPI {
@@ -55,11 +57,11 @@ export class ProviderAPI {
     athleteId,
   }: {
     provider: ConnectorProvider;
-    apiKey: string;
+    apiKey?: string;
     athleteId?: string;
   }): Promise<void> {
     await client.post(routes.provider.setCredentials(provider), {
-      apiKey,
+      ...(apiKey && { apiKey }),
       ...(athleteId && { athleteId }),
     });
   }

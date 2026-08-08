@@ -128,7 +128,7 @@ export const articleSyncWorkouts: BlogPost = {
         </p>
 
         <p>
-          <strong>Stop guessing, start training with AI today.</strong>{' '}
+          <strong>Keep your workouts and calendar together.</strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Sign up for OpenAthlete
           </a>{' '}
@@ -242,8 +242,7 @@ export const articleSyncWorkouts: BlogPost = {
 
         <p>
           <strong>
-            Arrêtez de deviner, commencez à vous entraîner avec l'IA dès
-            aujourd'hui.
+            Regroupez vos séances et votre calendrier au même endroit.
           </strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Inscrivez-vous sur OpenAthlete

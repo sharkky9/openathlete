@@ -6,7 +6,6 @@ import { buildCoachInvitationExistingEmail } from './templates/coach-invitation-
 import { buildCoachInvitationNewEmail } from './templates/coach-invitation-new.template';
 import { buildPasswordResetEmail } from './templates/password-reset.template';
 import { buildSignupNotificationEmail } from './templates/signup-notification.template';
-import { buildSubscriptionConfirmationEmail } from './templates/subscription-confirmation.template';
 import { buildWelcomeEmail } from './templates/welcome.template';
 
 export const emailTemplates = {
@@ -14,9 +13,6 @@ export const emailTemplates = {
     props: EmailPropsFromId<'password-reset'>,
   ) => string,
   welcome: buildWelcomeEmail as (props: EmailPropsFromId<'welcome'>) => string,
-  'subscription-confirmation': buildSubscriptionConfirmationEmail as (
-    props: EmailPropsFromId<'subscription-confirmation'>,
-  ) => string,
   'athlete-invitation': buildAthleteInvitationEmail as (
     props: EmailPropsFromId<'athlete-invitation'>,
   ) => string,

@@ -7,7 +7,6 @@ import {
   Hero,
   Navbar,
   OpenSource,
-  Pricing,
   Problem,
   Science,
   Solution,
@@ -58,7 +57,6 @@ export default async function HomePage({
         <Features />
         <Comparison />
         <Science />
-        <Pricing />
         <OpenSource />
         <FAQ locale={locale} />
         <FinalCTA />

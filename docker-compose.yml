@@ -83,10 +83,6 @@ services:
       BREVO_API_KEY: ${BREVO_API_KEY}
       BREVO_FROM_EMAIL: ${BREVO_FROM_EMAIL}
       
-      # AI Services (optional - agent endpoints error when unset)
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
-      
       # Optional OAuth providers
       GARMIN_CLIENT_ID: ${GARMIN_CLIENT_ID:-}
       GARMIN_CLIENT_SECRET: ${GARMIN_CLIENT_SECRET:-}
@@ -99,19 +95,12 @@ services:
       COROS_CLIENT_SECRET: ${COROS_CLIENT_SECRET:-}
       COROS_REDIRECT_URI: ${COROS_REDIRECT_URI:-}
       
-      # Stripe (optional)
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
-      STRIPE_PRICE_IDS: ${STRIPE_PRICE_IDS:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      
       # Firebase (optional)
       FIREBASE_FUNCTIONS_URL: ${FIREBASE_FUNCTIONS_URL:-}
       
       # Feature flags
       ENABLE_ACTIVITY_IMPORT: ${ENABLE_ACTIVITY_IMPORT:-false}
       ENABLE_ACTIVITY_PROCESSING: ${ENABLE_ACTIVITY_PROCESSING:-false}
-      ENABLE_TRAINING_LOAD_ESTIMATION: ${ENABLE_TRAINING_LOAD_ESTIMATION:-false}
       
       # Monitoring (optional)
       BETTER_STACK_DSN: ${BETTER_STACK_DSN:-}
@@ -151,4 +140,3 @@ volumes:
 networks:
   openathlete-network:
     driver: bridge
-

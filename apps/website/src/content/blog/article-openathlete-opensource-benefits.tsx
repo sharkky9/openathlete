@@ -338,8 +338,8 @@ export const articleOpenathleteOpensourceBenefits: BlogPost = {
             you can fork the project and continue development independently
           </li>
           <li>
-            <strong>No Subscription Dependency:</strong> Even if we stop
-            offering cloud hosting, you can continue using the software
+            <strong>No Hosted-Service Dependency:</strong> Even if a hosted
+            deployment disappears, you can continue using the software
           </li>
           <li>
             <strong>Community Continuity:</strong> The community can continue
@@ -446,7 +446,7 @@ export const articleOpenathleteOpensourceBenefits: BlogPost = {
           </li>
           <li>
             <strong>Cost:</strong> Use advanced training software without paying
-            expensive subscription fees
+            proprietary license fees
           </li>
           <li>
             <strong>Innovation:</strong> Benefit from community-driven
@@ -520,13 +520,13 @@ export const articleOpenathleteOpensourceBenefits: BlogPost = {
         <h2>Get Started with Open Source Training Software</h2>
 
         <p>
-          Ready to experience the benefits of open source? OpenAthlete is free,
-          open-source, and ready to use:
+          Ready to experience the benefits of open source? OpenAthlete is
+          open-source and ready to use:
         </p>
 
         <ol>
           <li>
-            <strong>Try the Cloud Version:</strong> Sign up for free at{' '}
+            <strong>Open the Hosted App:</strong> Create an account at{' '}
             <a href="https://app.openathlete.org/auth/create-account">
               app.openathlete.org
             </a>{' '}
@@ -935,9 +935,9 @@ export const articleOpenathleteOpensourceBenefits: BlogPost = {
             développement indépendamment
           </li>
           <li>
-            <strong>Pas de Dépendance d'Abonnement :</strong> Même si nous
-            arrêtons d'offrir l'hébergement cloud, vous pouvez continuer à
-            utiliser le logiciel
+            <strong>Pas de dépendance à un service hébergé :</strong> Même si un
+            déploiement hébergé disparaît, vous pouvez continuer à utiliser le
+            logiciel
           </li>
           <li>
             <strong>Continuité Communautaire :</strong> La communauté peut
@@ -1054,7 +1054,7 @@ export const articleOpenathleteOpensourceBenefits: BlogPost = {
           </li>
           <li>
             <strong>Coût :</strong> Utilisez un logiciel d'entraînement avancé
-            sans payer de frais d'abonnement élevés
+            sans payer de frais de licence propriétaire
           </li>
           <li>
             <strong>Innovation :</strong> Bénéficiez d'améliorations et de
@@ -1133,14 +1133,13 @@ export const articleOpenathleteOpensourceBenefits: BlogPost = {
         <h2>Commencez avec le Logiciel d'Entraînement Open Source</h2>
 
         <p>
-          Prêt à découvrir les avantages de l'open source ? OpenAthlete est
-          gratuit, open source et prêt à l'emploi :
+          Prêt à découvrir les avantages de l'open source ? OpenAthlete est open
+          source et prêt à l'emploi :
         </p>
 
         <ol>
           <li>
-            <strong>Essayez la Version Cloud :</strong> Inscrivez-vous
-            gratuitement sur{' '}
+            <strong>Ouvrez l'application hébergée :</strong> Créez un compte sur{' '}
             <a href="https://app.openathlete.org/auth/create-account">
               app.openathlete.org
             </a>{' '}

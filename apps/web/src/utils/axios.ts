@@ -61,7 +61,6 @@ export const routes = {
       `/event/${eventId}/activity/feedback/skip`,
     unskipFeedback: (eventId: Event['eventId']) =>
       `/event/${eventId}/activity/feedback/unskip`,
-    transcribeAudio: '/activity-feedback/transcribe',
   },
   eventTemplate: {
     getMyTemplates: '/event-template',
@@ -174,10 +173,6 @@ export const routes = {
     getCycle: (cycleId: number) => `/cycle/${cycleId}`,
     deleteCycle: (cycleId: number) => `/cycle/${cycleId}`,
   },
-  aiFeatures: {
-    generateEvent: '/agent/ai/events/generate',
-    modifyEvent: '/agent/ai/events/modify',
-  },
   messages: {
     createThread: '/messages/threads',
     getThreads: '/messages/threads',
@@ -205,16 +200,6 @@ export const routes = {
     history: '/training-load/history',
     weeklySummary: '/training-load/weekly-summary',
     recalculate: '/training-load/recalculate',
-  },
-  subscription: {
-    current: '/subscription/current',
-    checkout: '/subscription/checkout',
-    cancel: '/subscription/cancel',
-    resume: '/subscription/resume',
-    invoices: '/subscription/invoices',
-    portal: '/subscription/portal',
-    getAthleteFeatureAccess: (athleteId: number, featureName: string) =>
-      `/subscription/athlete/${athleteId}/feature-access/${featureName}`,
   },
   seoPlan: {
     create: '/seo-plan',

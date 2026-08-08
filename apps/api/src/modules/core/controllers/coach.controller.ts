@@ -244,7 +244,7 @@ export class CoachController {
   @ApiOperation({
     summary: 'Accept a pending coach invitation',
     description:
-      'Accepts a pending coach invitation from an athlete. Creates the coach-athlete relationship and updates the invitation status to ACCEPTED. Verifies that the invitation is for the authenticated user and checks subscription limits (athlete limit for coach) before accepting.',
+      'Accepts a pending coach invitation from an athlete. Creates the coach-athlete relationship and updates the invitation status to ACCEPTED. Verifies that the invitation is for the authenticated user.',
   })
   @ApiParam({
     name: 'invitationId',

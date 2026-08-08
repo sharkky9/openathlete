@@ -19,7 +19,6 @@ export type CalendarContextType = {
   displayedWeeks: Date[][];
   createEvent: (date: Date, type: EVENT_TYPE) => void;
   createEventFromTemplate: (date: Date) => void;
-  createEventWithAI: (date: Date) => void;
   editEvent: (eventId: Event['eventId']) => void;
   events: Event[];
   openEventDetails: (eventId: Event['eventId']) => void;
@@ -34,7 +33,6 @@ export type CalendarContextType = {
   setColoredBy: (coloredBy: COLORED_BY | null) => void;
   weeklyLoadSummary: Record<string, CalendarWeekLoadSummary>;
   weeklyLoadSummaryLoading: boolean;
-  estimatingEvents: Set<number>;
   // Cycle management
   cycles: Cycle[];
   createCycle: (startDate: Date, endDate: Date) => void;

@@ -22,17 +22,10 @@ export function isAndroid(): boolean {
 }
 
 /**
- * Check if payments are disabled (iOS build or environment variable)
- * Apple requires in-app purchases, so we disable Stripe payments on iOS
+ * Check if external financial-support links should be hidden.
+ * Apple review rules restrict those links in iOS builds.
  */
-export function isPaymentDisabled(): boolean {
-  // Check environment variable first (for build-time configuration)
-  const envDisabled = import.meta.env.VITE_DISABLE_PAYMENTS === 'true';
-  if (envDisabled) {
-    return true;
-  }
-
-  // Check if running on iOS
+export function isFinancialSupportDisabled(): boolean {
   return isIOS();
 }
 

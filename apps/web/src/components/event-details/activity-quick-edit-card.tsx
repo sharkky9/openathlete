@@ -3,21 +3,16 @@ import {
   useUnskipFeedbackMutation,
 } from '@/api/activity-feedback';
 import { useUpdateEventMutation } from '@/api/event';
-import { useAthleteFeatureAccess } from '@/api/subscription';
 import { FormProvider, RHFRpe, RHFTextarea } from '@/components/hook-form';
-import { PaywallDialog } from '@/components/paywall';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SparklesIcon } from '@/components/ui/sparkles-icon';
 import { m } from '@/paraglide/messages';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { ActivityEvent, FeatureName } from '@openathlete/shared';
+import { ActivityEvent } from '@openathlete/shared';
 
 const quickEditSchema = z.object({
   description: z.string().optional(),
@@ -44,22 +39,11 @@ export function ActivityQuickEditCard({
     isMyActivity,
   );
   const unskipMutation = useUnskipFeedbackMutation(event.eventId);
-  const { data: featureAccess } = useAthleteFeatureAccess(
-    event.athleteId ?? undefined,
-    FeatureName.AI_RPE_QUESTIONS,
-  );
-  const [paywallOpen, setPaywallOpen] = useState(false);
-
   const questions = feedbackData?.questions ?? [];
   const feedbackSkipped = feedbackData?.feedbackSkipped ?? false;
   const allAnswered =
     questions.length > 0 && questions.every((q) => q.answerText !== null);
   const hasQuestions = questions.length > 0;
-
-  // Check if athlete or coach has access and no questions were generated
-  const hasNoAccess = featureAccess?.hasAccess === false;
-  const hasNoQuestions = questions.length === 0;
-  const showPaywallAlert = hasNoAccess && hasNoQuestions;
 
   const handleReopenFeedback = async () => {
     try {
@@ -109,23 +93,6 @@ export function ActivityQuickEditCard({
           <CardTitle>{m.quick_edit()}</CardTitle>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col">
-          {showPaywallAlert && (
-            <Alert className="mb-4">
-              <SparklesIcon className="h-4 w-4" />
-              <AlertTitle>{m.rpe_questions_paywall_title()}</AlertTitle>
-              <AlertDescription className="mt-2 flex flex-col gap-3">
-                <span>{m.rpe_questions_paywall_description()}</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-fit"
-                  onClick={() => setPaywallOpen(true)}
-                >
-                  {m.upgrade_now()}
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
           {isMyActivity && hasQuestions && (
             <div className="mb-4 pb-4 border-b">
               {feedbackSkipped ? (
@@ -190,12 +157,6 @@ export function ActivityQuickEditCard({
           </FormProvider>
         </CardContent>
       </Card>
-      <PaywallDialog
-        open={paywallOpen}
-        onOpenChange={setPaywallOpen}
-        reason="ai-feature"
-        analyticsSource="activity_quick_edit"
-      />
     </>
   );
 }
