@@ -197,18 +197,11 @@ export function ChatWindow() {
     [sendMessageMessage],
   );
 
-  useEffect(() => {
-    if (
-      isOpen &&
-      threads &&
-      threads.length === 0 &&
-      !isLoading &&
-      !createMessageThreadMutation.isPending
-    ) {
-      createMessageThreadMutation.mutate({ participantUserIds: [] });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, threads, isLoading]);
+  // Opening the bubble no longer auto-creates a thread. It used to fire
+  // `createThread` with `participantUserIds: []`, which the API rejects with a
+  // 400, so every open of the bubble on an account with no threads logged a
+  // failed request. The empty state renders `chatbot_select_or_create` and the
+  // `+` button opens the dialog instead.
 
   useEffect(() => {
     if (threads && threads.length > 0 && !activeId) {
@@ -376,7 +369,11 @@ export function ChatWindow() {
                 />
               ) : (
                 <div className="flex items-center justify-center min-h-full text-muted-foreground">
-                  <p>{m.chatbot_select_or_create()}</p>
+                  {isLoading ? (
+                    <Loader />
+                  ) : (
+                    <p>{m.chatbot_select_or_create()}</p>
+                  )}
                 </div>
               )}
             </div>

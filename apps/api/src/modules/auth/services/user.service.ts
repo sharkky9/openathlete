@@ -255,19 +255,56 @@ export class UserService {
   };
 
   public updateAccount = async (user: AuthUser, data: UpdateAccountDto) => {
+    if (data.roles) {
+      await this.assertRolesCanBeApplied(user, data.roles as UserRole[]);
+    }
+
     return await this.prisma.user.update({
       where: { userId: user.userId },
       data: {
         firstName: data.firstName,
         lastName: data.lastName,
         gender: data.gender,
+        // `undefined` leaves the column alone; a present array replaces it
+        // wholesale, so roles are removed as well as added — the same rule
+        // `completeOnboarding` applies.
+        roles: data.roles as UserRole[] | undefined,
       },
       select: {
         firstName: true,
         lastName: true,
         gender: true,
+        roles: true,
       },
     });
+  };
+
+  /**
+   * Guards a roles change made after onboarding.
+   *
+   * Dropping COACH from an account that still coaches athletes would orphan
+   * those `CoachAthlete` rows: the coach keeps read access through CASL (which
+   * reads the link, not the role) while the coaching surfaces disappear from
+   * their UI. Rather than silently unlink other people's athletes, refuse and
+   * make the user remove the links first.
+   */
+  private assertRolesCanBeApplied = async (
+    user: AuthUser,
+    roles: UserRole[],
+  ) => {
+    if (roles.includes(UserRole.COACH)) {
+      return;
+    }
+
+    const coachedAthleteCount = await this.prisma.coachAthlete.count({
+      where: { userId: user.userId },
+    });
+
+    if (coachedAthleteCount > 0) {
+      throw new BadRequestException(
+        'Cannot remove the COACH role while you still coach athletes. Remove your athletes first.',
+      );
+    }
   };
 
   async comparePasswords(

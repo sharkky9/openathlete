@@ -1,6 +1,6 @@
 import { API_BASE_URL } from '@/config';
 import { getAccessToken } from '@/utils/auth';
-import { QueryClient } from '@tanstack/react-query';
+import { resetQueryCache } from '@/utils/query-client';
 import axios, { isAxiosError } from 'axios';
 
 import { ConnectorProvider, Event } from '@openathlete/shared';
@@ -243,8 +243,10 @@ client.interceptors.response.use(undefined, async (error) => {
   if (isAxiosError(error) && error.response?.status === 401) {
     localStorage.removeItem(ACCESS_TOKEN);
     localStorage.removeItem(REFRESH_TOKEN);
-    const queryClient = new QueryClient();
-    queryClient.clear();
+    // Clear the cache the app actually reads from. This used to construct a
+    // throwaway QueryClient and clear that instead, which left the real cache
+    // — and the dead session's responses in it — untouched.
+    resetQueryCache();
   }
   throw error;
 });
