@@ -318,7 +318,7 @@ export class ProviderOAuthController {
   @ApiOperation({
     summary: 'Connect provider account with an API key',
     description:
-      'Connects a provider that authenticates with a static, user-supplied API key rather than an OAuth redirect. Currently only INTERVALS_ICU. The key is validated by reading the athlete profile from the provider before the account is stored; for Intervals.icu the athlete ID is discovered automatically and only needs to be supplied to override it.',
+      'Connects a provider that authenticates with a static API key rather than an OAuth redirect. Currently only INTERVALS_ICU. The key is validated by reading the athlete profile from the provider before the account is stored; for Intervals.icu the athlete ID is discovered automatically and only needs to be supplied to override it. If no key is sent, a server-configured INTERVALS_ICU_API_KEY is used instead, so a single-user deployment never has to pass the credential through the UI.',
   })
   @ApiParam({
     name: 'provider',
@@ -335,7 +335,7 @@ export class ProviderOAuthController {
         apiKey: {
           type: 'string',
           description:
-            'Personal API key, found under Developer Settings at https://intervals.icu/settings',
+            'Personal API key, found under Developer Settings at https://intervals.icu/settings. May be omitted when the server sets INTERVALS_ICU_API_KEY.',
         },
         athleteId: {
           type: 'string',
@@ -343,7 +343,6 @@ export class ProviderOAuthController {
             'Optional provider athlete ID (e.g. "i225849"). Discovered automatically when omitted.',
         },
       },
-      required: ['apiKey'],
     },
   })
   @ApiResponse({

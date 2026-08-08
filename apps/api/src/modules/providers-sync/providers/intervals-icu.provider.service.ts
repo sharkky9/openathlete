@@ -160,22 +160,67 @@ export class IntervalsIcuProviderService
   }
 
   /**
+   * Resolve the credential to connect with.
+   *
+   * A key supplied in the request always wins. Only when none is supplied do we
+   * fall back to `INTERVALS_ICU_API_KEY`, which lets a single-user deployment
+   * configure the credential on the server instead of pasting it into a form.
+   *
+   * `INTERVALS_ICU_ATHLETE_ID` is deliberately tied to the fallback key: it
+   * identifies *that* key's athlete, so pairing it with someone else's key
+   * would point the connection at the wrong account.
+   */
+  private resolveConnectCredentials(
+    apiKey?: string,
+    athleteId?: string,
+  ): { apiKey: string; athleteId?: string; usedEnvFallback: boolean } {
+    const requestKey = apiKey?.trim();
+    const requestAthleteId = athleteId?.trim();
+
+    if (requestKey) {
+      return {
+        apiKey: requestKey,
+        athleteId: requestAthleteId,
+        usedEnvFallback: false,
+      };
+    }
+
+    const envKey = this.configService.get('INTERVALS_ICU_API_KEY')?.trim();
+
+    if (!envKey) {
+      throw new Error(
+        'An Intervals.icu API key is required: supply one when connecting, or set INTERVALS_ICU_API_KEY on the server',
+      );
+    }
+
+    return {
+      apiKey: envKey,
+      athleteId:
+        requestAthleteId ||
+        this.configService.get('INTERVALS_ICU_ATHLETE_ID')?.trim() ||
+        undefined,
+      usedEnvFallback: true,
+    };
+  }
+
+  /**
    * Validate an API key and link the account.
    *
    * There is no OAuth round-trip: the user pastes their key from
-   * https://intervals.icu/settings and we verify it by reading the athlete
-   * profile. The athlete ID is discovered from the response, so the user does
-   * not have to find it themselves.
+   * https://intervals.icu/settings — or the deployment sets
+   * `INTERVALS_ICU_API_KEY` and supplies none — and we verify it by reading the
+   * athlete profile. The athlete ID is discovered from the response, so it
+   * never has to be found by hand.
+   *
+   * Both routes are validated identically, so a mistyped environment variable
+   * fails here at connect time rather than silently at the first sync.
    */
   async connect(
     user: AuthUser,
-    apiKey: string,
+    apiKey?: string,
     athleteId?: string,
   ): Promise<ProviderAccount> {
-    const trimmedKey = apiKey?.trim();
-    if (!trimmedKey) {
-      throw new Error('An Intervals.icu API key is required');
-    }
+    const credentials = this.resolveConnectCredentials(apiKey, athleteId);
 
     const athlete = await this.prisma.athlete.findUnique({
       where: { userId: user.userId },
@@ -186,8 +231,8 @@ export class IntervalsIcuProviderService
       throw new Error('Athlete not found');
     }
 
-    const client = this.createClient(trimmedKey);
-    const requestedAthleteId = athleteId?.trim() || ME_ATHLETE_ID;
+    const client = this.createClient(credentials.apiKey);
+    const requestedAthleteId = credentials.athleteId || ME_ATHLETE_ID;
 
     const profile = await client.get<IntervalsIcuAthlete>(
       `/athlete/${encodeURIComponent(requestedAthleteId)}`,
@@ -199,13 +244,14 @@ export class IntervalsIcuProviderService
         ? profile.id
         : requestedAthleteId;
 
+    // The key itself is never logged — only where it came from.
     this.logger.log(
-      `Connected Intervals.icu athlete ${externalUserId} for OpenAthlete athlete ${athlete.athleteId}`,
+      `Connected Intervals.icu athlete ${externalUserId} for OpenAthlete athlete ${athlete.athleteId} (API key from ${credentials.usedEnvFallback ? 'INTERVALS_ICU_API_KEY' : 'request'})`,
     );
 
     return this.saveProviderAccount({
       athleteId: athlete.athleteId,
-      accessToken: trimmedKey,
+      accessToken: credentials.apiKey,
       // No refresh token and no expiry: the key is static.
       refreshToken: '',
       scopes: 'api_key',
