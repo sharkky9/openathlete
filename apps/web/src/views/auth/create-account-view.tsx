@@ -152,7 +152,6 @@ export function CreateAccountView({ className }: React.ComponentProps<'form'>) {
         <Button
           type="submit"
           className="w-full"
-          onClick={onSubmit}
           isLoading={
             createAccountMutation.isPending ||
             loginMutation.isPending ||
