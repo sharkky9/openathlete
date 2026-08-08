@@ -874,7 +874,7 @@ Thank you for helping make OpenAthlete better! 🎉
 
 ## License
 
-By contributing to OpenAthlete, you agree that your contributions will be licensed under the project's [MPL-2.0 License](LICENSE).
+By contributing to OpenAthlete, you agree that your contributions will be licensed under the project's [AGPLv3 License](LICENSE).
 
 ---
 
