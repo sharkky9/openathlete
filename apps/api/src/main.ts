@@ -35,10 +35,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
-  // Without this Nest never calls `OnModuleDestroy`, so the health probe's
-  // Redis client (whose retryStrategy never gives up) is leaked on SIGTERM.
-  app.enableShutdownHooks();
-
   const port = configService.get('PORT') ?? '3000';
   await app.listen(Number.parseInt(port, 10));
 }
