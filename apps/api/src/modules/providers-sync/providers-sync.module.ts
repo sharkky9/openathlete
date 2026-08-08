@@ -14,6 +14,7 @@ import { ProviderExportService } from './export.service';
 import {
   CorosProviderService,
   GarminProviderService,
+  IntervalsIcuProviderService,
   PolarProviderService,
   StravaProviderService,
   SuuntoProviderService,
@@ -41,6 +42,7 @@ import { ProviderExportScheduler } from './scheduler.service';
     SuuntoProviderService,
     CorosProviderService,
     PolarProviderService,
+    IntervalsIcuProviderService,
   ],
   exports: [
     ProviderExportService,
@@ -49,6 +51,7 @@ import { ProviderExportScheduler } from './scheduler.service';
     SuuntoProviderService,
     CorosProviderService,
     PolarProviderService,
+    IntervalsIcuProviderService,
   ],
 })
 export class ProvidersSyncModule {}
