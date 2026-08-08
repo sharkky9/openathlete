@@ -2,10 +2,10 @@ import type { BlogPost } from './types';
 
 export const articleSyncWorkouts: BlogPost = {
   metadata: {
-    slug: 'how-to-sync-workouts-to-garmin-polar-polar',
+    slug: 'how-to-sync-workouts-to-garmin-suunto',
     title: {
-      en: 'How to Sync Workouts to Garmin, Polar, and Polar',
-      fr: 'Comment Synchroniser les Entraînements vers Garmin, Polar et Polar',
+      en: 'How to Sync Workouts to Garmin and Suunto',
+      fr: 'Comment Synchroniser les Entraînements vers Garmin et Suunto',
     },
     description: {
       en: 'Tutorial: "Gateway" article. Show how to sync manually, then show how OpenAthlete does it automatically.',
@@ -22,8 +22,8 @@ export const articleSyncWorkouts: BlogPost = {
     publishedAt: '2025-04-15',
     tags: [
       'Send Workout to Garmin',
-      'Polar Sync',
-      'Polar API',
+      'Suunto Sync',
+      'Suunto API',
       'Watch Integration',
     ],
     readingTime: 6,
@@ -43,7 +43,7 @@ export const articleSyncWorkouts: BlogPost = {
 
         <p>
           This guide shows you how to sync workouts to your watch—both manually
-          and automatically. Whether you use Garmin, Polar, or Polar, we'll
+          and automatically. Whether you use Garmin, Suunto, or Polar, we'll
           cover the options.
         </p>
 
@@ -58,12 +58,12 @@ export const articleSyncWorkouts: BlogPost = {
         </ol>
 
         <p>
-          <strong>Polar:</strong>
+          <strong>Suunto:</strong>
         </p>
         <ol>
-          <li>Use Polar Training Hub</li>
-          <li>Create workout plan</li>
-          <li>Sync via app</li>
+          <li>Use the Suunto app</li>
+          <li>Create or import a structured workout</li>
+          <li>Sync to watch</li>
         </ol>
 
         <p>
@@ -100,17 +100,22 @@ export const articleSyncWorkouts: BlogPost = {
             <strong>Error-free:</strong> No manual entry mistakes
           </li>
           <li>
-            <strong>Multi-device:</strong> Works with Garmin, Polar, Polar, and
-            more
+            <strong>Multi-device:</strong> Works with Garmin and Suunto watches
           </li>
         </ul>
+
+        <p>
+          Structured workouts are pushed to Garmin and Suunto. Strava and Polar
+          connect for activity import, so your completed sessions still flow
+          back into OpenAthlete.
+        </p>
 
         <p>
           <strong>How it works:</strong>
         </p>
         <ol>
           <li>Coach creates plan in OpenAthlete</li>
-          <li>Plan syncs to athlete's watch automatically</li>
+          <li>Plan syncs to athlete's Garmin or Suunto watch automatically</li>
           <li>Athlete sees workout on watch, ready to execute</li>
           <li>When plan updates, watch updates automatically</li>
         </ol>
@@ -146,7 +151,7 @@ export const articleSyncWorkouts: BlogPost = {
         <p>
           Ce guide vous montre comment synchroniser les entraînements sur votre
           montre—à la fois manuellement et automatiquement. Que vous utilisiez
-          Garmin, Polar ou Polar, nous couvrirons les options.
+          Garmin, Suunto ou Polar, nous couvrirons les options.
         </p>
 
         <h2>Méthodes de Synchronisation Manuelle</h2>
@@ -160,12 +165,12 @@ export const articleSyncWorkouts: BlogPost = {
         </ol>
 
         <p>
-          <strong>Polar :</strong>
+          <strong>Suunto :</strong>
         </p>
         <ol>
-          <li>Utiliser Polar Training Hub</li>
-          <li>Créer plan d'entraînement</li>
-          <li>Synchroniser via app</li>
+          <li>Utiliser l'application Suunto</li>
+          <li>Créer ou importer un entraînement structuré</li>
+          <li>Synchroniser sur la montre</li>
         </ol>
 
         <p>
@@ -202,10 +207,15 @@ export const articleSyncWorkouts: BlogPost = {
             <strong>Sans erreur :</strong> Pas d'erreurs de saisie manuelle
           </li>
           <li>
-            <strong>Multi-appareil :</strong> Fonctionne avec Garmin, Polar,
-            Polar et plus
+            <strong>Multi-appareil :</strong> Fonctionne avec Garmin et Suunto
           </li>
         </ul>
+
+        <p>
+          Les séances structurées sont envoyées vers Garmin et Suunto. Strava et
+          Polar se connectent pour l'import des activités, vos sorties réalisées
+          reviennent donc dans OpenAthlete.
+        </p>
 
         <p>
           <strong>Comment ça fonctionne :</strong>
@@ -213,7 +223,8 @@ export const articleSyncWorkouts: BlogPost = {
         <ol>
           <li>Le coach crée le plan dans OpenAthlete</li>
           <li>
-            Le plan se synchronise sur la montre de l'athlète automatiquement
+            Le plan se synchronise automatiquement sur la montre Garmin ou
+            Suunto de l'athlète
           </li>
           <li>L'athlète voit l'entraînement sur la montre, prêt à exécuter</li>
           <li>
