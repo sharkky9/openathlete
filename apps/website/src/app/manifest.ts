@@ -3,10 +3,10 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'OpenAthlete — AI-assisted endurance coaching platform',
+    name: 'OpenAthlete — Open-source endurance training platform',
     short_name: 'OpenAthlete',
     description:
-      'OpenAthlete is the intelligent coaching platform that helps coaches and athletes plan, analyze and prevent fatigue through AI.',
+      'OpenAthlete helps athletes plan training, track load and review progress in an open-source platform they can self-host.',
     start_url: '/',
     display: 'standalone',
     background_color: '#ffffff',

@@ -138,7 +138,7 @@ export const articleYouthTalentDetection: BlogPost = {
         </p>
 
         <p>
-          <strong>Stop guessing, start training with AI today.</strong>{' '}
+          <strong>Use consistent data to support long-term development.</strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Sign up for OpenAthlete
           </a>{' '}
@@ -262,8 +262,8 @@ export const articleYouthTalentDetection: BlogPost = {
 
         <p>
           <strong>
-            Arrêtez de deviner, commencez à vous entraîner avec l'IA dès
-            aujourd'hui.
+            Utilisez des données cohérentes pour soutenir le développement à
+            long terme.
           </strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Inscrivez-vous sur OpenAthlete

@@ -127,7 +127,7 @@ export const articleDigitalizingClubs: BlogPost = {
           <li>Template plans pushed to three groups</li>
           <li>All members received plans on their watches</li>
           <li>Coaches monitored completion rates</li>
-          <li>AI alerted to fatigue patterns</li>
+          <li>Coaches reviewed fatigue patterns</li>
           <li>Individual adjustments made easily</li>
         </ul>
 
@@ -145,7 +145,7 @@ export const articleDigitalizingClubs: BlogPost = {
         </p>
 
         <p>
-          <strong>Stop guessing, start training with AI today.</strong>{' '}
+          <strong>Give your club one place for training data.</strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Sign up for OpenAthlete
           </a>{' '}
@@ -262,7 +262,7 @@ export const articleDigitalizingClubs: BlogPost = {
           <li>Plans modèles poussés à trois groupes</li>
           <li>Tous les membres ont reçu les plans sur leurs montres</li>
           <li>Les coachs ont surveillé les taux de complétion</li>
-          <li>L'IA a alerté aux modèles de fatigue</li>
+          <li>Les coachs ont examiné les tendances de fatigue</li>
           <li>Ajustements individuels faits facilement</li>
         </ul>
 
@@ -281,8 +281,7 @@ export const articleDigitalizingClubs: BlogPost = {
 
         <p>
           <strong>
-            Arrêtez de deviner, commencez à vous entraîner avec l'IA dès
-            aujourd'hui.
+            Regroupez les données d'entraînement de votre club au même endroit.
           </strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Inscrivez-vous sur OpenAthlete

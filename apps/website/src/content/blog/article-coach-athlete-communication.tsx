@@ -247,7 +247,7 @@ export const articleCoachAthleteCommunication: BlogPost = {
         </p>
 
         <p>
-          <strong>Stop guessing, start training with AI today.</strong>{' '}
+          <strong>Keep training and feedback in one place.</strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Sign up for OpenAthlete
           </a>{' '}
@@ -373,8 +373,8 @@ export const articleCoachAthleteCommunication: BlogPost = {
 
         <h2>La Fonctionnalité Chat</h2>
         <p>
-          OpenAthlete inclut un chat intégré, mais il est plus intelligent que
-          la messagerie générique :
+          OpenAthlete inclut un chat intégré qui conserve le contexte de
+          l'entraînement :
         </p>
         <ul>
           <li>
@@ -493,8 +493,7 @@ export const articleCoachAthleteCommunication: BlogPost = {
 
         <p>
           <strong>
-            Arrêtez de deviner, commencez à vous entraîner avec l'IA dès
-            aujourd'hui.
+            Regroupez l'entraînement et les retours au même endroit.
           </strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Inscrivez-vous sur OpenAthlete

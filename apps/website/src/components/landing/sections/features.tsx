@@ -7,10 +7,10 @@ import { Section } from '@/components/landing/section';
 import { m } from '@/paraglide/messages';
 import {
   CalendarDays,
+  ClipboardList,
   LineChart,
-  Mic,
+  MessageCircle,
   RefreshCw,
-  Sparkles,
   TabletSmartphone,
 } from 'lucide-react';
 
@@ -18,8 +18,8 @@ const icons = [
   CalendarDays,
   LineChart,
   RefreshCw,
-  Sparkles,
-  Mic,
+  ClipboardList,
+  MessageCircle,
   TabletSmartphone,
 ];
 

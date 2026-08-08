@@ -136,7 +136,7 @@ export const articleTrimp: BlogPost = {
         </p>
 
         <p>
-          <strong>Stop guessing, start training with AI today.</strong>{' '}
+          <strong>Make your training load visible.</strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Sign up for OpenAthlete
           </a>{' '}
@@ -256,10 +256,7 @@ export const articleTrimp: BlogPost = {
         </p>
 
         <p>
-          <strong>
-            Arrêtez de deviner, commencez à vous entraîner avec l'IA dès
-            aujourd'hui.
-          </strong>{' '}
+          <strong>Rendez votre charge d'entraînement visible.</strong>{' '}
           <a href="https://app.openathlete.org/auth/create-account">
             Inscrivez-vous sur OpenAthlete
           </a>{' '}
