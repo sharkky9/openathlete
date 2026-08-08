@@ -16,6 +16,7 @@ import { z } from 'zod';
 
 import { updateAccountDtoSchema } from '@openathlete/shared';
 
+import { RolesSection } from './roles-section';
 import { SettingsSection } from './settings-section';
 
 export function ProfileTab() {
@@ -91,6 +92,7 @@ export function ProfileTab() {
           </div>
         </FormProvider>
       </SettingsSection>
+      <RolesSection />
       {athlete?.athleteId && (
         <SessionValidationSettingsCard athleteId={athlete.athleteId} />
       )}

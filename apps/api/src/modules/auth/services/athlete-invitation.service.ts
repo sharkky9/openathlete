@@ -17,7 +17,12 @@ import { ApiEnvSchemaType } from '@openathlete/shared';
 
 import { SendEmailEvent } from 'src/events';
 import { PrismaService } from 'src/modules/prisma/services/prisma.service';
-import { FeatureAccessService } from 'src/modules/subscription';
+// Imported from the file rather than the `src/modules/subscription` barrel,
+// which re-exports the subscription controllers and cycles back into
+// `src/modules/auth` for its decorators. Nest tolerates the cycle when the
+// whole app boots; loading this service on its own evaluates the controller
+// decorators mid-cycle and throws "JwtUser is not a function".
+import { FeatureAccessService } from 'src/modules/subscription/services/feature-access.service';
 
 @Injectable()
 export class AthleteInvitationService {

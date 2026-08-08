@@ -121,7 +121,7 @@ export class UserController {
   @ApiOperation({
     summary: 'Update user account information',
     description:
-      "Updates the authenticated user's personal information including first name, last name, and gender. Only the provided fields will be updated.",
+      "Updates the authenticated user's personal information including first name, last name, gender and roles. Only the provided fields will be updated. When `roles` is present it is authoritative: roles missing from the array are removed as well as added. It may not be empty, and the COACH role cannot be removed while the user still coaches athletes.",
   })
   @ApiBody({
     description: 'Account update data',
@@ -140,6 +140,15 @@ export class UserController {
           type: 'string',
           enum: Object.values(Gender),
           example: 'FEMALE',
+        },
+        roles: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: Object.values(UserRole),
+          },
+          minItems: 1,
+          example: ['ATHLETE', 'COACH'],
         },
       },
     },
@@ -163,8 +172,21 @@ export class UserController {
           enum: Object.values(Gender),
           example: 'FEMALE',
         },
+        roles: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: Object.values(UserRole),
+          },
+          example: ['ATHLETE', 'COACH'],
+        },
       },
     },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid payload - an empty roles array, or removing COACH while the user still coaches athletes',
   })
   @ApiResponse({
     status: 401,

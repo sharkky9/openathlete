@@ -71,9 +71,17 @@ export function NewMessageThreadDialog({
     );
   };
 
+  /**
+   * The current user is always a participant, and selecting nobody else is
+   * allowed: it creates a thread the user is alone in. That is deliberate —
+   * `availableUsers` only ever contains the user's coaches and coached
+   * athletes, so an account with neither used to face a permanently disabled
+   * Create button and "0 conversations" forever. A solo thread is the smallest
+   * thing the API already accepts (`participantUserIds` must contain the caller
+   * and at least one entry), and other participants can be added later.
+   */
   const handleConfirm = () => {
     if (currentUser?.userId) {
-      // Always include current user
       const participantUserIds = [currentUser.userId, ...selectedUserIds];
       onConfirm(participantUserIds);
       setSelectedUserIds([]);
@@ -89,9 +97,9 @@ export function NewMessageThreadDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] z-[9999]">
         <DialogHeader>
-          <DialogTitle>Nouvelle conversation</DialogTitle>
+          <DialogTitle>{m.chatbot_new_conversation()}</DialogTitle>
           <DialogDescription>
-            Sélectionnez les personnes avec qui vous souhaitez dialoguer
+            {m.messages_new_thread_description()}
           </DialogDescription>
         </DialogHeader>
 
@@ -99,9 +107,7 @@ export function NewMessageThreadDialog({
           <div className="space-y-2 p-2">
             {availableUsers.length === 0 ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground">
-                <p className="text-sm">
-                  Aucune personne disponible pour démarrer une conversation
-                </p>
+                <p className="text-sm">{m.messages_new_thread_no_people()}</p>
               </div>
             ) : (
               availableUsers.map((user) => (
@@ -130,11 +136,11 @@ export function NewMessageThreadDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={isLoading}>
-            Annuler
+            {m.cancel()}
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={selectedUserIds.length === 0 || isLoading}
+            disabled={!currentUser?.userId || isLoading}
             isLoading={isLoading}
           >
             {m.create()}
