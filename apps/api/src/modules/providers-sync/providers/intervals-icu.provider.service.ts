@@ -5,6 +5,7 @@ import {
   ConnectorProvider,
   EventActivity,
   EventType,
+  Prisma,
   ProviderAccount,
 } from '@openathlete/database';
 import { ActivityStream, ApiEnvSchemaType } from '@openathlete/shared';
@@ -17,6 +18,7 @@ import {
   mergeIntervalsIcuStreams,
   resolveIntervalsIcuAverageWatts,
   resolveIntervalsIcuKilojoules,
+  resolveIntervalsIcuMaxWatts,
   resolveIntervalsIcuRpe,
   selectIntervalsIcuStreamTypes,
   toIntervalsIcuDate,
@@ -45,8 +47,8 @@ import {
 } from '../base/provider-import.interface';
 import {
   IntervalsIcuApiClient,
-  IntervalsIcuAuthError,
   IntervalsIcuClientOptions,
+  IntervalsIcuHttpError,
 } from './intervals-icu.client';
 
 /**
@@ -148,11 +150,36 @@ export class IntervalsIcuProviderService
     });
   }
 
+  /**
+   * One live client per provider account.
+   *
+   * The client self-throttles by remembering when it last called out, which only
+   * works if the same instance survives between calls. Building a fresh one per
+   * activity reset that clock to zero every time, so the 200ms spacing applied
+   * *within* an activity and never *between* activities — a 1,224-activity
+   * import then fired as fast as the worker pool could go and drew an auth
+   * block. The map is keyed by account and holds the key it was built with, so a
+   * reconnected account with a new key gets a new client rather than a stale one.
+   */
+  private readonly clients = new Map<
+    number,
+    { apiKey: string; client: IntervalsIcuApiClient }
+  >();
+
   private async clientForAccount(
     account: ProviderAccount,
   ): Promise<IntervalsIcuApiClient> {
     const apiKey = await this.getValidAccessToken(account);
-    return this.createClient(apiKey);
+    const cached = this.clients.get(account.providerAccountId);
+
+    if (cached && cached.apiKey === apiKey) {
+      return cached.client;
+    }
+
+    const client = this.createClient(apiKey);
+    this.clients.set(account.providerAccountId, { apiKey, client });
+
+    return client;
   }
 
   private athleteIdFor(account: ProviderAccount): string {
@@ -238,7 +265,7 @@ export class IntervalsIcuProviderService
       `/athlete/${encodeURIComponent(requestedAthleteId)}`,
     );
 
-    // IDs are opaque strings ("i225849"); never coerce them to numbers.
+    // IDs are opaque strings ("i123456"); never coerce them to numbers.
     const externalUserId =
       typeof profile?.id === 'string' && profile.id.length > 0
         ? profile.id
@@ -362,6 +389,16 @@ export class IntervalsIcuProviderService
 
   /**
    * Import and persist a single activity, including its streams.
+   *
+   * Ordering here is load-bearing. Everything that can fail — fetching the
+   * streams, above all — happens *before* the first write, and the two rows that
+   * make up an activity are then written in one transaction. The previous order
+   * created the `Event` first and only then went to the network, so a stream
+   * fetch that threw left an `Event` with no `EventActivity` behind it. Because
+   * the dedup guard below looks for an `EventActivity`, those orphans were
+   * invisible to it: each of the three BullMQ attempts leaked another one, the
+   * activity was still lost at the end, and a fourth attempt would have leaked a
+   * fourth. On a real account that cost 2 activities and left 6 orphan events.
    */
   async importActivity(
     account: ProviderAccount,
@@ -391,26 +428,17 @@ export class IntervalsIcuProviderService
       );
     }
 
-    const event = await this.prisma.event.create({
-      data: {
-        athleteId: athlete.athleteId,
-        name: activity.name,
-        type: EventType.ACTIVITY,
-        startDate: activity.startDate,
-        endDate: activity.endDate,
-      },
-    });
+    const stream = await this.fetchStreams(account, raw);
 
-    return this.persistActivity(account, event, raw);
+    return this.persistActivity(athlete.athleteId, activity, raw, stream);
   }
 
   private async persistActivity(
-    account: ProviderAccount,
-    event: { eventId: number },
+    athleteId: number,
+    imported: ImportedActivity,
     activity: IntervalsIcuActivity,
+    stream: ActivityStream,
   ): Promise<EventActivity> {
-    const stream = await this.fetchStreams(account, activity);
-
     const compressionStart = Date.now();
     const compressedActivityStream = compressActivityStream(stream);
     const compressionTime = Date.now() - compressionStart;
@@ -424,33 +452,95 @@ export class IntervalsIcuProviderService
       `Importing Intervals.icu activity ${activity.id} (source: ${activity.source ?? 'unknown'}, device: ${activity.device_name ?? 'unknown'})`,
     );
 
-    return this.prisma.eventActivity.create({
-      data: {
-        provider: ConnectorProvider.INTERVALS_ICU,
-        distance: roundDistance(activity.distance ?? activity.icu_distance),
-        elevationGain: roundElevation(activity.total_elevation_gain),
-        movingTime: activity.moving_time ?? activity.elapsed_time ?? 0,
-        averageSpeed: roundSpeed(activity.average_speed) ?? 0,
-        maxSpeed: roundSpeed(activity.max_speed) ?? 0,
-        averageCadence: roundCadence(activity.average_cadence),
-        averageWatts: roundPower(resolveIntervalsIcuAverageWatts(activity)),
-        maxWatts: roundPower(activity.max_watts),
-        weightedAverageWatts: roundPower(activity.icu_weighted_avg_watts),
-        averageHeartrate: roundHeartrate(activity.average_heartrate),
-        maxHeartrate: roundHeartrate(activity.max_heartrate),
-        kilojoules: roundEnergy(resolveIntervalsIcuKilojoules(activity)),
-        rpe: resolveIntervalsIcuRpe(activity),
-        averageGapSpeed: roundSpeed(activity.gap),
-        sport: mapIntervalsIcuSportType(activity.type),
-        stream: compressedActivityStream as object,
-        description: activity.description ?? '',
-        externalId: activity.id,
-        event: {
-          connect: {
-            eventId: event.eventId,
+    return this.prisma.$transaction(async (tx) => {
+      const event = await this.resolveEvent(tx, athleteId, imported);
+
+      return tx.eventActivity.create({
+        data: {
+          provider: ConnectorProvider.INTERVALS_ICU,
+          distance: roundDistance(activity.distance ?? activity.icu_distance),
+          elevationGain: roundElevation(activity.total_elevation_gain),
+          movingTime: activity.moving_time ?? activity.elapsed_time ?? 0,
+          averageSpeed: roundSpeed(activity.average_speed) ?? 0,
+          maxSpeed: roundSpeed(activity.max_speed) ?? 0,
+          averageCadence: roundCadence(activity.average_cadence),
+          averageWatts: roundPower(resolveIntervalsIcuAverageWatts(activity)),
+          maxWatts: roundPower(resolveIntervalsIcuMaxWatts(activity, stream)),
+          weightedAverageWatts: roundPower(activity.icu_weighted_avg_watts),
+          averageHeartrate: roundHeartrate(activity.average_heartrate),
+          maxHeartrate: roundHeartrate(activity.max_heartrate),
+          kilojoules: roundEnergy(resolveIntervalsIcuKilojoules(activity)),
+          rpe: resolveIntervalsIcuRpe(activity),
+          averageGapSpeed: roundSpeed(activity.gap),
+          sport: mapIntervalsIcuSportType(activity.type),
+          stream: compressedActivityStream as object,
+          description: activity.description ?? '',
+          externalId: activity.id,
+          event: {
+            connect: {
+              eventId: event.eventId,
+            },
           },
         },
+      });
+    });
+  }
+
+  /**
+   * The `Event` row to hang this activity off.
+   *
+   * Normally that is a new one. But an account that ran the old code already has
+   * orphan events on it, and a retry there would create a *second* event rather
+   * than reuse the one it abandoned. So an existing activity-less event for the
+   * same athlete and start time is adopted instead, which makes a retry converge
+   * on one row per activity rather than accumulate one per attempt.
+   *
+   * An `ACTIVITY` event with no `EventActivity` is always wreckage — nothing
+   * creates one deliberately. Its name and end date are overwritten rather than
+   * trusted, both because they may be stale and because two activities can share
+   * a start time, in which case whichever one gets here first takes the orphan
+   * and must not inherit the other's title.
+   */
+  private async resolveEvent(
+    tx: Prisma.TransactionClient,
+    athleteId: number,
+    imported: ImportedActivity,
+  ): Promise<{ eventId: number }> {
+    const orphan = await tx.event.findFirst({
+      where: {
+        athleteId,
+        type: EventType.ACTIVITY,
+        startDate: imported.startDate,
+        activity: { is: null },
       },
+      orderBy: { eventId: 'asc' },
+      select: { eventId: true },
+    });
+
+    if (orphan) {
+      this.logger.warn(
+        `Reusing orphaned event ${orphan.eventId} for Intervals.icu activity ${imported.externalId}`,
+      );
+
+      return tx.event.update({
+        where: { eventId: orphan.eventId },
+        data: {
+          name: imported.name,
+          endDate: imported.endDate,
+        },
+        select: { eventId: true },
+      });
+    }
+
+    return tx.event.create({
+      data: {
+        athleteId,
+        name: imported.name,
+        type: EventType.ACTIVITY,
+        startDate: imported.startDate,
+        endDate: imported.endDate,
+      },
+      select: { eventId: true },
     });
   }
 
@@ -461,6 +551,13 @@ export class IntervalsIcuProviderService
    * so nothing is guessed and no request is wasted on an activity without them.
    * The `types` list is always explicit: omitting it makes Intervals.icu return
    * the raw power stream instead of its corrected one.
+   *
+   * Only a 404 is swallowed — that means the activity genuinely has no stream
+   * data, and an empty stream is the truthful result. Any other failure is
+   * re-thrown so the job fails and BullMQ retries it. Swallowing those instead
+   * stored the activity with an empty stream and reported the import as a
+   * success, which is how an activity that *does* have power and heart rate can
+   * end up permanently blank with nothing flagged.
    */
   private async fetchStreams(
     account: ProviderAccount,
@@ -481,15 +578,17 @@ export class IntervalsIcuProviderService
 
       return mergeIntervalsIcuStreams(streams ?? []);
     } catch (error) {
-      if (error instanceof IntervalsIcuAuthError) {
-        throw error;
+      if (error instanceof IntervalsIcuHttpError && error.status === 404) {
+        this.logger.warn(
+          `Intervals.icu reports no streams for activity ${activity.id}; importing without them`,
+        );
+        return {};
       }
 
-      // A missing or oversized stream should not sink the whole activity.
       this.logger.error(
         `Error fetching Intervals.icu streams for activity ${activity.id}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return {};
+      throw error;
     }
   }
 

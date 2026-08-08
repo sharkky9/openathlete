@@ -155,7 +155,9 @@ export const mergeIntervalsIcuStreams = (
 
 /**
  * `average_watts` is null on Intervals.icu even for power-meter rides; the
- * populated field is `icu_average_watts`.
+ * populated field is `icu_average_watts`. The OpenAPI `Activity` schema in fact
+ * declares only `icu_average_watts` — the unprefixed name belongs to `Interval`
+ * — so the `average_watts` branch is defensive, not the normal path.
  */
 export const resolveIntervalsIcuAverageWatts = (
   activity: Pick<IntervalsIcuActivity, 'average_watts' | 'icu_average_watts'>,
@@ -170,31 +172,41 @@ export const resolveIntervalsIcuAverageWatts = (
 };
 
 /**
- * Headline training load, falling back to whichever per-method component the
- * activity's sport produced (`power_load` for rides, `pace_load` for runs,
- * `hr_load`/`trimp` otherwise).
+ * Maximum power for an activity.
+ *
+ * There is no summary field for it. `max_watts` is not a property of the
+ * Intervals.icu `Activity` schema at all (it belongs to `Interval`), and there
+ * is no `icu_max_watts` anywhere in the API — which is why reading
+ * `activity.max_watts` produced a null `maxWatts` on all 1,222 activities of a
+ * real account. The near-miss candidates `p_max` / `icu_pm_p_max` /
+ * `icu_rolling_p_max` are power-duration *model* parameters fitted across the
+ * athlete's history, not this activity's peak, so they must not be used here.
+ *
+ * The `watts` stream we already fetch is the actual measurement, so the peak is
+ * taken from it. An explicit `max_watts` still wins if a payload ever carries
+ * one.
  */
-export const resolveIntervalsIcuTrainingLoad = (
-  activity: Pick<
-    IntervalsIcuActivity,
-    'icu_training_load' | 'power_load' | 'pace_load' | 'hr_load' | 'trimp'
-  >,
+export const resolveIntervalsIcuMaxWatts = (
+  activity: Pick<IntervalsIcuActivity, 'max_watts'>,
+  stream?: Pick<ActivityStream, 'watts'> | null,
 ): number | null => {
-  const candidates = [
-    activity.icu_training_load,
-    activity.power_load,
-    activity.pace_load,
-    activity.hr_load,
-    activity.trimp,
-  ];
+  if (typeof activity.max_watts === 'number') {
+    return activity.max_watts;
+  }
 
-  for (const candidate of candidates) {
-    if (typeof candidate === 'number') {
-      return candidate;
+  const watts = stream?.watts;
+  if (!watts || watts.length === 0) {
+    return null;
+  }
+
+  let max = Number.NEGATIVE_INFINITY;
+  for (const sample of watts) {
+    if (typeof sample === 'number' && Number.isFinite(sample) && sample > max) {
+      max = sample;
     }
   }
 
-  return null;
+  return max === Number.NEGATIVE_INFINITY ? null : max;
 };
 
 /**

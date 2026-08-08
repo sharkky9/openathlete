@@ -10,8 +10,8 @@ import {
   mergeIntervalsIcuStreams,
   resolveIntervalsIcuAverageWatts,
   resolveIntervalsIcuKilojoules,
+  resolveIntervalsIcuMaxWatts,
   resolveIntervalsIcuRpe,
-  resolveIntervalsIcuTrainingLoad,
   selectIntervalsIcuStreamTypes,
   toIntervalsIcuDate,
 } from './intervals-icu';
@@ -221,34 +221,40 @@ describe('resolveIntervalsIcuAverageWatts', () => {
   });
 });
 
-describe('resolveIntervalsIcuTrainingLoad', () => {
-  it('prefers the headline load', () => {
-    expect(resolveIntervalsIcuTrainingLoad(outdoorRideActivity)).toBe(93);
-    expect(resolveIntervalsIcuTrainingLoad(virtualRunActivity)).toBe(32);
+describe('resolveIntervalsIcuMaxWatts', () => {
+  // The bug this replaces: `max_watts` is not a property of the Intervals.icu
+  // `Activity` schema, so reading it directly yielded null on all 1,222
+  // activities of a real account. Peak power has to come from the watts stream.
+  it('derives the peak from the watts stream when the summary has none', () => {
+    expect(outdoorRideActivity.max_watts).toBeUndefined();
+
+    const stream = mergeIntervalsIcuStreams(outdoorRideStreams);
+
+    expect(stream.watts).toEqual([0, 145, 210, 198]);
+    expect(resolveIntervalsIcuMaxWatts(outdoorRideActivity, stream)).toBe(210);
   });
 
-  it('falls back through power, pace, hr and trimp', () => {
+  it('returns null for an activity with no power stream', () => {
+    expect(resolveIntervalsIcuMaxWatts(virtualRunActivity, {})).toBeNull();
+    expect(resolveIntervalsIcuMaxWatts({}, undefined)).toBeNull();
+    expect(resolveIntervalsIcuMaxWatts({}, { watts: [] })).toBeNull();
+  });
+
+  it('still honours an explicit max_watts if a payload ever carries one', () => {
     expect(
-      resolveIntervalsIcuTrainingLoad({
-        icu_training_load: null,
-        power_load: 88,
-      }),
-    ).toBe(88);
+      resolveIntervalsIcuMaxWatts({ max_watts: 741 }, { watts: [10] }),
+    ).toBe(741);
+  });
+
+  it('keeps a genuine zero rather than treating it as missing', () => {
+    expect(resolveIntervalsIcuMaxWatts({ max_watts: 0 }, undefined)).toBe(0);
+    expect(resolveIntervalsIcuMaxWatts({}, { watts: [0, 0] })).toBe(0);
+  });
+
+  it('ignores non-finite samples', () => {
     expect(
-      resolveIntervalsIcuTrainingLoad({
-        icu_training_load: null,
-        power_load: null,
-        pace_load: 41,
-      }),
-    ).toBe(41);
-    expect(
-      resolveIntervalsIcuTrainingLoad({
-        icu_training_load: null,
-        hr_load: 58,
-      }),
-    ).toBe(58);
-    expect(resolveIntervalsIcuTrainingLoad({ trimp: 60.18 })).toBe(60.18);
-    expect(resolveIntervalsIcuTrainingLoad({})).toBeNull();
+      resolveIntervalsIcuMaxWatts({}, { watts: [12, Number.NaN, 34] }),
+    ).toBe(34);
   });
 });
 

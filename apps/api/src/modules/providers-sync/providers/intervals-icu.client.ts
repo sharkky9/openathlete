@@ -15,7 +15,9 @@ import axios, { AxiosRequestConfig, AxiosResponse, isAxiosError } from 'axios';
  *    short-lived (~30-60s) block applied after repeated failed auth attempts
  *    from the same IP. A client that treats the first 401 as "credentials are
  *    dead" will revoke a perfectly good connection. So we back off and retry on
- *    401, and only surface an auth failure once every retry is exhausted.
+ *    401, and only surface an auth failure once every retry is exhausted — and
+ *    the retry budget is sized to outlast the *long* end of that block, because
+ *    a budget that expires inside it turns a temporary block into lost data.
  *
  * 3. **There are no rate-limit headers.** Nothing in the response tells you how
  *    much budget is left (verified across ~25 live responses), so the only
@@ -28,9 +30,33 @@ const DEFAULT_BASE_URL = 'https://intervals.icu/api/v1';
 /** ~5 req/s, half of the documented 10/s per-IP ceiling. */
 const DEFAULT_MIN_REQUEST_INTERVAL_MS = 200;
 
-const DEFAULT_MAX_RETRIES = 4;
+/**
+ * The retry budget exists to outlast an auth block, so it is sized against the
+ * documented block length rather than picked for tidiness.
+ *
+ * 6 retries (7 attempts) of un-jittered 401 backoff is 5+10+20+30+30+30 = 125s,
+ * and never less than 100s once jitter is applied — comfortably past the far end
+ * of a ~30-60s block. The previous budget of 1+2+4+8 = 15s could not outlast
+ * even the near end of one, and permanently lost 2 of 1,224 activities on a real
+ * account because of it.
+ */
+const DEFAULT_MAX_RETRIES = 6;
 const DEFAULT_INITIAL_BACKOFF_MS = 1000;
+
+/**
+ * 401s start much further out than other failures. A block lasts ~30-60s, so
+ * retrying a second later cannot succeed — it only burns an attempt, and each
+ * failed auth from the same IP is what feeds the block in the first place.
+ */
+const DEFAULT_AUTH_INITIAL_BACKOFF_MS = 5_000;
+
 const DEFAULT_MAX_BACKOFF_MS = 30_000;
+
+/**
+ * ±20% so a burst of parallel imports that all hit the same block do not march
+ * back in lockstep and re-trigger it.
+ */
+const DEFAULT_BACKOFF_JITTER_RATIO = 0.2;
 
 /** An 11-hour run returned 3.6 MB of stream JSON; leave generous headroom. */
 const DEFAULT_MAX_CONTENT_LENGTH = 64 * 1024 * 1024;
@@ -44,10 +70,16 @@ export interface IntervalsIcuClientOptions {
   minRequestIntervalMs?: number;
   maxRetries?: number;
   initialBackoffMs?: number;
+  /** First 401 backoff. Separate from `initialBackoffMs`; see the constant. */
+  authInitialBackoffMs?: number;
   maxBackoffMs?: number;
+  /** Fraction of the computed delay to jitter by, either way. 0 disables it. */
+  backoffJitterRatio?: number;
   maxContentLength?: number;
   /** Injectable for tests; defaults to a real timer. */
   sleep?: (ms: number) => Promise<void>;
+  /** Injectable for tests; defaults to `Math.random`. */
+  random?: () => number;
   /** Injectable for tests; defaults to `axios.request`. */
   request?: IntervalsIcuRequestFn;
   onRetry?: (info: {
@@ -72,6 +104,24 @@ export class IntervalsIcuAuthError extends Error {
   }
 }
 
+/**
+ * A non-2xx response the retry policy decided not to retry, or ran out of
+ * retries on. Carries the status so callers can branch on it — a 404 on a
+ * streams endpoint means something quite different from a 500, and picking that
+ * apart by matching on the message text is the kind of thing that quietly stops
+ * working the day the message is reworded.
+ */
+export class IntervalsIcuHttpError extends Error {
+  constructor(
+    readonly status: number,
+    path: string,
+    body: string,
+  ) {
+    super(`Intervals.icu GET ${path} failed with status ${status}: ${body}`);
+    this.name = 'IntervalsIcuHttpError';
+  }
+}
+
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -80,9 +130,12 @@ export class IntervalsIcuApiClient {
   private readonly minRequestIntervalMs: number;
   private readonly maxRetries: number;
   private readonly initialBackoffMs: number;
+  private readonly authInitialBackoffMs: number;
   private readonly maxBackoffMs: number;
+  private readonly backoffJitterRatio: number;
   private readonly maxContentLength: number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly random: () => number;
   private readonly request: IntervalsIcuRequestFn;
   private readonly onRetry?: IntervalsIcuClientOptions['onRetry'];
 
@@ -100,16 +153,21 @@ export class IntervalsIcuApiClient {
     this.maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.initialBackoffMs =
       options.initialBackoffMs ?? DEFAULT_INITIAL_BACKOFF_MS;
+    this.authInitialBackoffMs =
+      options.authInitialBackoffMs ?? DEFAULT_AUTH_INITIAL_BACKOFF_MS;
     this.maxBackoffMs = options.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
+    this.backoffJitterRatio =
+      options.backoffJitterRatio ?? DEFAULT_BACKOFF_JITTER_RATIO;
     this.maxContentLength =
       options.maxContentLength ?? DEFAULT_MAX_CONTENT_LENGTH;
     this.sleep = options.sleep ?? defaultSleep;
+    this.random = options.random ?? Math.random;
     this.request = options.request ?? ((config) => axios.request(config));
     this.onRetry = options.onRetry;
   }
 
   /**
-   * GET a path relative to the API base (e.g. `/athlete/i225849/activities`).
+   * GET a path relative to the API base (e.g. `/athlete/i123456/activities`).
    */
   async get<T>(
     path: string,
@@ -148,8 +206,10 @@ export class IntervalsIcuApiClient {
             // Only after exhausting retries do we call it an auth failure.
             throw new IntervalsIcuAuthError(path, attempt);
           }
-          throw new Error(
-            `Intervals.icu GET ${path} failed with status ${response.status}: ${this.describeBody(response.data)}`,
+          throw new IntervalsIcuHttpError(
+            response.status,
+            path,
+            this.describeBody(response.data),
           );
         }
 
@@ -188,6 +248,21 @@ export class IntervalsIcuApiClient {
     }
   }
 
+  /**
+   * Spread a delay by ±`backoffJitterRatio` so retries do not resynchronise.
+   *
+   * `Retry-After` is never jittered: the server named a time, and jittering it
+   * downwards would simply ignore it.
+   */
+  private jitter(delayMs: number): number {
+    if (this.backoffJitterRatio <= 0) {
+      return delayMs;
+    }
+
+    const spread = (this.random() * 2 - 1) * this.backoffJitterRatio;
+    return Math.max(0, Math.round(delayMs * (1 + spread)));
+  }
+
   private async backOff(
     attempt: number,
     path: string,
@@ -199,12 +274,20 @@ export class IntervalsIcuApiClient {
       ] ?? NaN,
     );
 
-    const delayMs = Number.isFinite(retryAfterSeconds)
-      ? Math.min(retryAfterSeconds * 1000, this.maxBackoffMs)
-      : Math.min(
-          this.initialBackoffMs * Math.pow(2, attempt - 1),
-          this.maxBackoffMs,
-        );
+    let delayMs: number;
+
+    if (Number.isFinite(retryAfterSeconds)) {
+      delayMs = Math.min(retryAfterSeconds * 1000, this.maxBackoffMs);
+    } else {
+      const base =
+        response?.status === 401
+          ? this.authInitialBackoffMs
+          : this.initialBackoffMs;
+
+      delayMs = this.jitter(
+        Math.min(base * Math.pow(2, attempt - 1), this.maxBackoffMs),
+      );
+    }
 
     this.onRetry?.({
       attempt,

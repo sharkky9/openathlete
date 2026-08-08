@@ -20,7 +20,7 @@
 export type IntervalsIcuActivitySource = string;
 
 export interface IntervalsIcuAthlete {
-  /** Opaque string id, e.g. "i225849". Never parse it as a number. */
+  /** Opaque string id, e.g. "i123456". Never parse it as a number. */
   id: string;
   name?: string | null;
   email?: string | null;
@@ -57,11 +57,24 @@ export interface IntervalsIcuActivity {
   average_cadence?: number | null;
 
   /**
-   * Frequently null even on power-meter rides — `icu_average_watts` is the
-   * field Intervals.icu actually populates. See `resolveAverageWatts`.
+   * Power. The OpenAPI `Activity` schema declares *only* the `icu_`-prefixed
+   * names — `average_watts` and `max_watts` are properties of `Interval`, not
+   * of `Activity`. So `icu_average_watts` is the primary field, not a fallback.
+   *
+   * `average_watts` is kept purely as a defensive fallback (it has been seen on
+   * the wire, always null, and the spec is a lower bound on what is returned).
+   * See `resolveIntervalsIcuAverageWatts`.
    */
   average_watts?: number | null;
   icu_average_watts?: number | null;
+  /**
+   * Not in the documented `Activity` schema, and null on every activity of a
+   * real 1,224-activity account. Intervals.icu simply does not report peak power
+   * on the activity summary — `p_max`/`icu_pm_p_max` are power-*model*
+   * parameters, not this ride's maximum. Max power is therefore derived from the
+   * `watts` stream; see `resolveIntervalsIcuMaxWatts`. Declared only so a
+   * payload that does carry it is still honoured.
+   */
   max_watts?: number | null;
   icu_weighted_avg_watts?: number | null;
 
@@ -72,12 +85,11 @@ export interface IntervalsIcuActivity {
   icu_joules?: number | null;
   calories?: number | null;
 
-  /** Headline training load; the per-method components sit alongside it. */
-  icu_training_load?: number | null;
-  power_load?: number | null;
-  pace_load?: number | null;
-  hr_load?: number | null;
-  trimp?: number | null;
+  // Intervals.icu also reports its own training load (`icu_training_load` and
+  // the per-method `power_load` / `pace_load` / `hr_load` / `trimp`). None of it
+  // is modelled here: OpenAthlete computes and stores its own training load, so
+  // there is no column to put an upstream figure in and no way to reconcile two
+  // different models on one activity.
 
   /** 1-10 scale. The OpenAthlete `rpe` column is 0.0-1.0. */
   icu_rpe?: number | null;

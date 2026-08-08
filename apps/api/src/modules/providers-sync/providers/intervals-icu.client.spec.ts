@@ -32,6 +32,15 @@ function stubRequests(replies: Reply[]) {
   return { request, calls };
 }
 
+/**
+ * A client on the real defaults, with only the injectable seams replaced.
+ *
+ * The defaults are the point of most of these tests — the retry budget is what
+ * decides whether a temporary auth block costs an activity — so they are
+ * deliberately not overridden here. `random: () => 0.5` is the midpoint, which
+ * makes the jitter factor exactly 1 and the delays reproducible; jitter itself
+ * is exercised separately.
+ */
 function makeClient(replies: Reply[], overrides = {}) {
   const { request, calls } = stubRequests(replies);
   const sleeps: number[] = [];
@@ -41,9 +50,7 @@ function makeClient(replies: Reply[], overrides = {}) {
     sleep: async (ms: number) => {
       sleeps.push(ms);
     },
-    initialBackoffMs: 1000,
-    maxBackoffMs: 30_000,
-    maxRetries: 4,
+    random: () => 0.5,
     // Throttling is exercised separately; keep it out of the recorded sleeps.
     minRequestIntervalMs: 0,
     ...overrides,
@@ -72,7 +79,7 @@ describe('IntervalsIcuApiClient', () => {
   it('passes query parameters through', async () => {
     const { client, calls } = makeClient([{ status: 200, data: [] }]);
 
-    await client.get('/athlete/i225849/activities', {
+    await client.get('/athlete/i123456/activities', {
       oldest: '2026-06-08',
       newest: '2026-08-07',
     });
@@ -91,15 +98,15 @@ describe('IntervalsIcuApiClient', () => {
       const { client, request, sleeps } = makeClient([
         { status: 401, data: authFailedBody },
         { status: 401, data: authFailedBody },
-        { status: 200, data: { id: 'i225849' } },
+        { status: 200, data: { id: 'i123456' } },
       ]);
 
       await expect(client.get('/athlete/0')).resolves.toEqual({
-        id: 'i225849',
+        id: 'i123456',
       });
 
       expect(request).toHaveBeenCalledTimes(3);
-      expect(retryDelays(sleeps)).toEqual([1000, 2000]);
+      expect(retryDelays(sleeps)).toEqual([5000, 10_000]);
     });
 
     it('only reports an auth failure once every retry is exhausted', async () => {
@@ -111,15 +118,68 @@ describe('IntervalsIcuApiClient', () => {
         IntervalsIcuAuthError,
       );
 
-      // 1 initial attempt + 4 retries.
-      expect(request).toHaveBeenCalledTimes(5);
-      expect(retryDelays(sleeps)).toEqual([1000, 2000, 4000, 8000]);
+      // 1 initial attempt + 6 retries.
+      expect(request).toHaveBeenCalledTimes(7);
+      expect(retryDelays(sleeps)).toEqual([
+        5000, 10_000, 20_000, 30_000, 30_000, 30_000,
+      ]);
+    });
+
+    /**
+     * The defect this pins down. Intervals.icu blocks an IP for ~30-60s after
+     * repeated auth failures, and the old budget of 1+2+4+8 = 15s ran out well
+     * inside that window: the client gave up while still blocked, the job burnt
+     * all three BullMQ attempts the same way, and the activity was lost for
+     * good. 2 of 1,224 activities went that way on a real account.
+     */
+    it('can outlast the long end of a 30-60s auth block', async () => {
+      const { client, sleeps } = makeClient([
+        { status: 401, data: authFailedBody },
+      ]);
+
+      await expect(client.get('/athlete/0')).rejects.toBeInstanceOf(
+        IntervalsIcuAuthError,
+      );
+
+      const total = retryDelays(sleeps).reduce((sum, ms) => sum + ms, 0);
+      expect(total).toBeGreaterThan(60_000);
+    });
+
+    it('outlasts a 60s block even on the unluckiest jitter draw', async () => {
+      // random() === 0 is the largest downward jitter the client can produce.
+      const { client, sleeps } = makeClient(
+        [{ status: 401, data: authFailedBody }],
+        { random: () => 0 },
+      );
+
+      await expect(client.get('/athlete/0')).rejects.toBeInstanceOf(
+        IntervalsIcuAuthError,
+      );
+
+      const total = retryDelays(sleeps).reduce((sum, ms) => sum + ms, 0);
+      expect(total).toBeGreaterThan(60_000);
+    });
+
+    it('waits longer before the first 401 retry than before other retries', async () => {
+      // A block lasts ~30-60s, so an immediate retry cannot succeed and each
+      // failed auth is itself what feeds the block.
+      const auth = makeClient([{ status: 401, data: authFailedBody }]);
+      await expect(auth.client.get('/athlete/0')).rejects.toBeInstanceOf(
+        IntervalsIcuAuthError,
+      );
+
+      const server = makeClient([{ status: 503 }]);
+      await expect(server.client.get('/athlete/0')).rejects.toThrow(/503/);
+
+      expect(retryDelays(auth.sleeps)[0]).toBeGreaterThan(
+        retryDelays(server.sleeps)[0],
+      );
     });
 
     it('caps the exponential backoff', async () => {
       const { client, sleeps } = makeClient(
         [{ status: 401, data: authFailedBody }],
-        { maxRetries: 8, maxBackoffMs: 5000 },
+        { maxRetries: 8, maxBackoffMs: 5000, authInitialBackoffMs: 1000 },
       );
 
       await expect(client.get('/athlete/0')).rejects.toBeInstanceOf(
@@ -144,6 +204,36 @@ describe('IntervalsIcuApiClient', () => {
     });
   });
 
+  describe('jitter', () => {
+    it('spreads the delay either side of the nominal backoff', async () => {
+      const draws = [0, 1];
+      let index = 0;
+
+      const { client, sleeps } = makeClient(
+        [{ status: 401, data: authFailedBody }],
+        { maxRetries: 2, random: () => draws[index++] ?? 0.5 },
+      );
+
+      await expect(client.get('/athlete/0')).rejects.toBeInstanceOf(
+        IntervalsIcuAuthError,
+      );
+
+      // Nominal 5000 and 10000, jittered by -20% then +20%.
+      expect(retryDelays(sleeps)).toEqual([4000, 12_000]);
+    });
+
+    it('never jitters an explicit Retry-After', async () => {
+      const { client, sleeps } = makeClient(
+        [{ status: 429, headers: { 'retry-after': '3' } }, { status: 200 }],
+        { random: () => 0 },
+      );
+
+      await client.get('/athlete/0');
+
+      expect(retryDelays(sleeps)).toEqual([3000]);
+    });
+  });
+
   describe('other statuses', () => {
     it('honours Retry-After on 429', async () => {
       const { client, sleeps, request } = makeClient([
@@ -151,7 +241,7 @@ describe('IntervalsIcuApiClient', () => {
         { status: 200, data: [] },
       ]);
 
-      await client.get('/athlete/i225849/activities');
+      await client.get('/athlete/i123456/activities');
 
       expect(request).toHaveBeenCalledTimes(2);
       expect(retryDelays(sleeps)).toEqual([3000]);
@@ -163,7 +253,7 @@ describe('IntervalsIcuApiClient', () => {
         { status: 200, data: [] },
       ]);
 
-      await client.get('/athlete/i225849/activities');
+      await client.get('/athlete/i123456/activities');
       expect(request).toHaveBeenCalledTimes(2);
     });
 
@@ -179,7 +269,7 @@ describe('IntervalsIcuApiClient', () => {
         },
       ]);
 
-      await expect(client.get('/athlete/i225849/activities')).rejects.toThrow(
+      await expect(client.get('/athlete/i123456/activities')).rejects.toThrow(
         /status 422.*oldest/s,
       );
       expect(request).toHaveBeenCalledTimes(1);

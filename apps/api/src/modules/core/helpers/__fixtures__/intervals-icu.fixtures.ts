@@ -4,9 +4,17 @@ import {
 } from '../../types/intervals-icu';
 
 /**
- * Fixtures recorded from a live probe of a real Intervals.icu account
- * (athlete i225849, 2026-08-07). Field values and shapes are verbatim; the
- * long streams are truncated to a handful of samples.
+ * Fixtures shaped after a live probe of a real Intervals.icu account, with the
+ * athlete ID replaced by a placeholder and the long streams truncated to a
+ * handful of samples.
+ *
+ * The field *set* is checked against the published `Activity` schema in
+ * https://intervals.icu/api/v1/docs, which matters more than it sounds: an
+ * earlier version of this file carried a populated `max_watts`, a property that
+ * does not exist on `Activity` at all. Because the fixture asserted a field the
+ * API never sends, the mapper's `maxWatts` looked correct in tests and was null
+ * on all 1,222 imported activities in reality. Do not add a field here without
+ * finding it in that schema first.
  */
 
 /** Outdoor road ride recorded on a Garmin Edge 1040 with a Quarq power meter. */
@@ -29,16 +37,12 @@ export const outdoorRideActivity: IntervalsIcuActivity = {
   average_watts: null,
   icu_average_watts: 202,
   icu_weighted_avg_watts: 251,
-  max_watts: 741,
+  // No max_watts: Intervals.icu does not report peak power on the activity
+  // summary. It is derived from the watts stream instead.
   average_heartrate: 145,
   max_heartrate: 172,
   icu_joules: 1167762,
   calories: 1334,
-  icu_training_load: 93,
-  power_load: 93,
-  hr_load: 58,
-  pace_load: null,
-  trimp: 60.18,
   icu_rpe: null,
   perceived_exertion: null,
   source: 'GARMIN_CONNECT',
@@ -83,10 +87,6 @@ export const virtualRunActivity: IntervalsIcuActivity = {
   average_heartrate: 130,
   max_heartrate: 151,
   calories: 409,
-  icu_training_load: 32,
-  pace_load: 32,
-  hr_load: 14,
-  trimp: 28.98,
   source: 'ZWIFT',
   device_name: 'ZWIFT 1',
   trainer: true,
