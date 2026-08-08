@@ -31,8 +31,10 @@ import {
 import { ConnectorProvider } from '@openathlete/database';
 import type { ApiEnvSchemaType } from '@openathlete/shared';
 import {
+  ProviderCredentialsDto,
   ProviderPreferencesDto,
   getProviderSyncCapabilities,
+  providerCredentialsSchema,
   providerPreferencesSchema,
 } from '@openathlete/shared';
 
@@ -48,6 +50,8 @@ import {
 import { FullImportResult } from '../base/base-provider.service';
 import { CorosProviderService, SuuntoProviderService } from '../providers';
 import { GarminProviderService } from '../providers/garmin.provider.service';
+import { IntervalsIcuAuthError } from '../providers/intervals-icu.client';
+import { IntervalsIcuProviderService } from '../providers/intervals-icu.provider.service';
 import { PolarProviderService } from '../providers/polar.provider.service';
 import { StravaProviderService } from '../providers/strava.provider.service';
 
@@ -67,6 +71,7 @@ export class ProviderOAuthController {
     private readonly suuntoProviderService: SuuntoProviderService,
     private readonly corosProviderService: CorosProviderService,
     private readonly polarProviderService: PolarProviderService,
+    private readonly intervalsIcuProviderService: IntervalsIcuProviderService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -302,6 +307,94 @@ export class ProviderOAuthController {
       default:
         throw new Error(`Provider ${provider} not supported`);
     }
+  }
+
+  /**
+   * Connect a provider that authenticates with a static API key instead of OAuth
+   */
+  @UseGuards(AuthGuard('jwt'), UserTypeGuard)
+  @ApiBearerAuth()
+  @Post(':provider/credentials')
+  @ApiOperation({
+    summary: 'Connect provider account with an API key',
+    description:
+      'Connects a provider that authenticates with a static API key rather than an OAuth redirect. Currently only INTERVALS_ICU. The key is validated by reading the athlete profile from the provider before the account is stored; for Intervals.icu the athlete ID is discovered automatically and only needs to be supplied to override it. If no key is sent, a server-configured INTERVALS_ICU_API_KEY is used instead, so a single-user deployment never has to pass the credential through the UI.',
+  })
+  @ApiParam({
+    name: 'provider',
+    type: String,
+    enum: Object.values(ConnectorProvider),
+    description: 'Provider name (case-insensitive)',
+    example: 'intervals_icu',
+  })
+  @ApiBody({
+    description: 'API key credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        apiKey: {
+          type: 'string',
+          description:
+            'Personal API key, found under Developer Settings at https://intervals.icu/settings. May be omitted when the server sets INTERVALS_ICU_API_KEY.',
+        },
+        athleteId: {
+          type: 'string',
+          description:
+            'Optional provider athlete ID (e.g. "i123456"). Discovered automatically when omitted.',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Provider account connected successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - provider does not support API key connection',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid or missing authentication token',
+  })
+  async connectProviderWithCredentials(
+    @JwtUser() user: AuthUser,
+    @Param('provider') provider: string,
+    @Body(new ZodValidationPipe(providerCredentialsSchema))
+    body: ProviderCredentialsDto,
+  ) {
+    const providerEnum = provider.toUpperCase() as ConnectorProvider;
+
+    if (providerEnum !== ConnectorProvider.INTERVALS_ICU) {
+      throw new BadRequestException(
+        `Provider ${provider} does not support API key connection`,
+      );
+    }
+
+    let account;
+    try {
+      account = await this.intervalsIcuProviderService.connect(
+        user,
+        body.apiKey,
+        body.athleteId,
+      );
+    } catch (error) {
+      if (error instanceof IntervalsIcuAuthError) {
+        // Only raised after the client has already backed off and retried, so
+        // by this point the key really does look wrong (or the athlete ID does).
+        throw new BadRequestException(
+          'Intervals.icu rejected these credentials. Check the API key (and athlete ID, if you supplied one) and try again.',
+        );
+      }
+      throw error;
+    }
+
+    return {
+      providerAccountId: account.providerAccountId,
+      provider: account.provider,
+      status: account.status,
+      athleteId: account.athleteId,
+    };
   }
 
   /**
@@ -742,6 +835,10 @@ export class ProviderOAuthController {
         case ConnectorProvider.SUUNTO:
           importResult =
             await this.suuntoProviderService.queueFullImport(account);
+          break;
+        case ConnectorProvider.INTERVALS_ICU:
+          importResult =
+            await this.intervalsIcuProviderService.queueFullImport(account);
           break;
         default:
           throw new BadRequestException(

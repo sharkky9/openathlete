@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Fork-owned end-to-end browser tests (Playwright) for OpenAthlete. Not part of the pnpm workspace on purpose.",
-  "license": "MPL-2.0",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed",

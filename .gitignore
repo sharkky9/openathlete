@@ -22,7 +22,6 @@ volumes
 # CI/CD
 docker-compose.local.yml
 output.json
-.terraform
 
 # MISC
 .dccache
@@ -46,13 +45,6 @@ scripts/**/assets
 *.env.build
 deploy/
 files/
-
-# Terraform
-**/terraform.tfvars
-**/.terraform.lock.hcl
-**/terraform.tfstate.backup
-**/terraform.tfstate
-**/.terraform.tfstate.lock.info
 
 # Firebase
 GoogleService-Info.plist

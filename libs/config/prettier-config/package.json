@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "OpenAthlete Prettier configuration",
   "author": "Tristan Bouillot <tristan@tblt.fr>",
-  "license": "MPL-2.0",
+  "license": "AGPL-3.0-only",
   "main": ".prettierrc.cjs",
   "type": "commonjs",
   "scripts": {

@@ -193,6 +193,20 @@ export const ApiEnvSchema = z
       'Secret key for verifying Polar webhook requests (optional)',
     ),
 
+    // Intervals.icu (optional — single-deployment fallback credentials)
+    //
+    // Intervals.icu has no OAuth flow for personal accounts, so the key would
+    // otherwise have to be pasted into the settings UI. Setting these lets a
+    // single-user deployment supply the credential to the server directly; the
+    // UI connect path still works and an explicitly supplied key still wins.
+    INTERVALS_ICU_API_KEY: optional(z.string()).describe(
+      'Intervals.icu personal API key used when none is supplied at connect time (optional)',
+    ),
+
+    INTERVALS_ICU_ATHLETE_ID: optional(z.string()).describe(
+      'Intervals.icu athlete ID (e.g. "i123456") paired with INTERVALS_ICU_API_KEY; resolved from the API when omitted (optional)',
+    ),
+
     // Email service (Brevo) — optional; email sending no-ops when unset
     BREVO_API_KEY: optional(z.string()).describe(
       'Brevo (formerly Sendinblue) API key for email service (optional)',

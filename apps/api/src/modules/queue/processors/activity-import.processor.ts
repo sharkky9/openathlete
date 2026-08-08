@@ -11,6 +11,7 @@ import { computeRecords } from '../../core/helpers/record';
 import { PrismaService } from '../../prisma/services/prisma.service';
 import {
   GarminProviderService,
+  IntervalsIcuProviderService,
   PolarProviderService,
   StravaProviderService,
   SuuntoProviderService,
@@ -33,6 +34,8 @@ export class ActivityImportProcessor extends WorkerHost {
     private readonly polarProviderService: PolarProviderService,
     @Inject(forwardRef(() => SuuntoProviderService))
     private readonly suuntoProviderService: SuuntoProviderService,
+    @Inject(forwardRef(() => IntervalsIcuProviderService))
+    private readonly intervalsIcuProviderService: IntervalsIcuProviderService,
     private readonly queueService: QueueService,
   ) {
     super();
@@ -95,6 +98,11 @@ export class ActivityImportProcessor extends WorkerHost {
         );
       } else if (account.provider === ConnectorProvider.SUUNTO) {
         savedActivity = await this.suuntoProviderService.importActivity(
+          account,
+          activity,
+        );
+      } else if (account.provider === ConnectorProvider.INTERVALS_ICU) {
+        savedActivity = await this.intervalsIcuProviderService.importActivity(
           account,
           activity,
         );
