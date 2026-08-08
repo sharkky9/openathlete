@@ -195,6 +195,7 @@ copy of a live secret cannot be rotated in place.
 | ----- | ------- | ------- |
 | `dry_run` | `true` | Report what would be deleted and change nothing. |
 | `environments` | `staging` | Comma-separated environment names. `production` is always refused. |
+| `project_id` | *(blank)* | Railway project id. Takes precedence over the `RAILWAY_PROJECT_ID` repository variable; blank falls back to it. |
 
 **Dry run first, always.** The default is a dry run on purpose. Read the plan it prints, confirm the
 variable names are the ones you expect, then dispatch again with `dry_run` unticked. The job log is
@@ -219,9 +220,18 @@ verdict, exiting non-zero if any of the seven survived.
 
 It needs a `RAILWAY_TOKEN` repository secret — an account, workspace or project token with access to
 this project. The script accepts either header shape (`Authorization: Bearer` for account/workspace
-tokens, `Project-Access-Token` for project tokens) and probes for the right one. If the token can see
-more than one Railway project it refuses to guess and asks for a `RAILWAY_PROJECT_ID` repository
-variable.
+tokens, `Project-Access-Token` for project tokens) and probes for the right one.
+
+**The project id has to be supplied.** The first real dispatch (run `31241554634`, a dry run against
+`staging`) established that the token authenticates fine — `me` answers — but Railway's root
+`projects` query then returns an empty list, which is what it looks like when the project belongs to
+a workspace rather than to the token owner directly. The script now tries a workspace-scoped query
+as a fallback, but that is best-effort and may find nothing. Treat supplying the id as the normal
+path: paste it into the `project_id` dispatch input, or set it once as the `RAILWAY_PROJECT_ID`
+repository variable (Settings → Secrets and variables → Actions → Variables). The input wins over the
+variable, and either one skips discovery entirely. The id is in the Railway project URL and under
+project Settings → General. Nothing was read or deleted in that run; the purge itself has still never
+executed against Railway.
 
 ## Recreating the project from scratch
 
