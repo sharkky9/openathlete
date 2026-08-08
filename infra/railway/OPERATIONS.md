@@ -52,8 +52,13 @@ Railway UI to pick up a change outside those paths.
 
 ## Monitoring
 
-- **Health checks** — Railway polls `/health` on `api` and `/` on `web`; a deployment that fails
-  its health check is not promoted, and the previous one keeps serving.
+- **Health checks** — Railway polls `/health/ready` on `api` and `/` on `web`; a deployment that
+  fails its health check is not promoted, and the previous one keeps serving. `/health/ready` is
+  the deploy gate: it returns 200 only once Postgres and Redis both answer, so a build that boots
+  but cannot reach its dependencies never takes over from a working one. `/health` remains the
+  plain liveness endpoint ("the process is up and serving HTTP") and is what the CI smoke tests
+  poll. Readiness answers `{"status":"ok"}` / `{"status":"error"}` and nothing else — which
+  dependency failed is in the API logs (`readiness check failed`), not in the response body.
 - **Logs** — build, deploy and runtime logs per service in the Railway UI (project → service →
   Deployments), or `railway logs`.
 - **Metrics** — CPU, memory, network and disk per service on the project's Observability tab.

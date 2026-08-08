@@ -132,6 +132,9 @@ services:
       args:
         # Point to API on port 3000 (accessible from browser)
         VITE_API_BASE_URL: "http://localhost:3000"
+        # Baked into the bundle at build time; empty disables browser error
+        # reporting. Only set it to a DSN you own.
+        VITE_BETTER_STACK_DSN: ${VITE_BETTER_STACK_DSN:-}
     container_name: openathlete-web
     ports:
       - "80:80"
