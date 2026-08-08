@@ -8,12 +8,12 @@ Everything lives in `infra/railway/backup/`. The same image performs backups and
 
 ## The `backup` service
 
-| Setting              | Value                                    |
-| -------------------- | ---------------------------------------- |
-| Source               | this repo, `infra/railway/backup/Dockerfile` |
-| Config as code       | `infra/railway/backup.railway.json`      |
-| Schedule             | `0 4 * * *` (daily, 04:00 UTC)           |
-| Restart policy       | `NEVER` (a cron run is expected to exit) |
+| Setting        | Value                                        |
+| -------------- | -------------------------------------------- |
+| Source         | this repo, `infra/railway/backup/Dockerfile` |
+| Config as code | `infra/railway/backup.railway.json`          |
+| Schedule       | `0 4 * * *` (daily, 04:00 UTC)               |
+| Restart policy | `NEVER` (a cron run is expected to exit)     |
 
 Cron services start on schedule, run once, and exit. A successful run exits `0`; a failed run is
 reported as a crashed deployment in Railway and triggers the deployment-failure notification.
@@ -30,6 +30,7 @@ BUCKET_ACCESS_KEY_ID     = <secret>
 BUCKET_SECRET_ACCESS_KEY = <secret>
 BACKUP_PREFIX            = production
 BACKUP_RETENTION_DAYS    = 14
+BACKUP_HEARTBEAT_URL     = <secret>                     # Better Stack ping URL
 ```
 
 Staging and PR previews have no bucket of their own and set `BACKUP_ENABLED=0`, which makes the
@@ -42,6 +43,9 @@ entrypoint exit `0` immediately instead of failing a nightly run.
 3. `PUT s3://<bucket>/<prefix>/latest` containing the key of the dump just written, so a restore
    never has to list the bucket.
 4. Deletes dumps whose timestamp is older than `BACKUP_RETENTION_DAYS`.
+5. Pings `BACKUP_HEARTBEAT_URL` only after every prior step succeeds. A missed ping alerts when the
+   cron stops running, the service is paused or deleted, or `BACKUP_ENABLED` is disabled. A failed
+   ping is warned about but does not turn a usable backup into a failed run.
 
 Uploads use `curl --aws-sigv4` with the credentials passed through a config on stdin, so no S3 SDK
 is needed in the image and the keys never appear in `argv`.
@@ -51,12 +55,12 @@ is needed in the image and the keys never appear in `argv`.
 The restore path is the same image with `MODE=restore`. It downloads a dump and runs
 `pg_restore --clean --if-exists` into `TARGET_DATABASE_URL`.
 
-| Variable              | Meaning                                                             |
-| --------------------- | ------------------------------------------------------------------- |
-| `MODE=restore`        | run `restore.sh` instead of `backup.sh`                              |
-| `TARGET_DATABASE_URL` | database to restore **into** (required)                              |
+| Variable              | Meaning                                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `MODE=restore`        | run `restore.sh` instead of `backup.sh`                                                                  |
+| `TARGET_DATABASE_URL` | database to restore **into** (required)                                                                  |
 | `BACKUP_KEY`          | key to restore, e.g. `production/20260803T040000Z.dump`; defaults to the newest dump for `BACKUP_PREFIX` |
-| `CREATE_TARGET_DB=1`  | drop and recreate the target database first (used for drills)        |
+| `CREATE_TARGET_DB=1`  | drop and recreate the target database first (used for drills)                                            |
 
 `pg_restore --clean` **destroys the contents of the target database**. Never point it at the live
 database unless that is exactly what you intend.
@@ -115,7 +119,9 @@ printf 'user = "%s:%s"\n' "$BUCKET_ACCESS_KEY_ID" "$BUCKET_SECRET_ACCESS_KEY" |
 ```
 
 A missing dump for the current day means the nightly run failed — check the `backup` service's
-deployment logs.
+deployment logs. Better Stack also expects one successful heartbeat every 24 hours, with a
+three-hour grace period. The heartbeat URL is a credential: keep it in Railway's secret variables,
+never paste it into an issue, PR, workflow input, or log.
 
 ## Last verified
 

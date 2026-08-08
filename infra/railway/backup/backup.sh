@@ -12,6 +12,7 @@
 #   BUCKET_URL_STYLE        "virtual-host" (default) or "path"
 #   BACKUP_PREFIX           key prefix, default "$RAILWAY_ENVIRONMENT_NAME"
 #   BACKUP_RETENTION_DAYS   delete older dumps, default 14 (0 disables pruning)
+#   BACKUP_HEARTBEAT_URL    Better Stack heartbeat URL; unset disables the ping
 set -eu
 
 : "${DATABASE_URL:?DATABASE_URL is required}"
@@ -80,6 +81,20 @@ if [ "$RETENTION_DAYS" -gt 0 ]; then
           ;;
       esac
     done
+fi
+
+# A successful run pings a dead-man's switch. Keep this on the success path in
+# backup.sh: BACKUP_ENABLED=0 exits before this script, so disabling or losing
+# the cron is correctly detected as a missing heartbeat. A flaky monitoring
+# endpoint does not invalidate an otherwise usable database backup.
+HEARTBEAT_URL="${BACKUP_HEARTBEAT_URL:-}"
+if [ -n "$HEARTBEAT_URL" ]; then
+  if curl --silent --show-error --fail --max-time 10 --retry 3 --retry-delay 2 \
+    -o /dev/null "$HEARTBEAT_URL"; then
+    echo "Heartbeat sent"
+  else
+    echo "Warning: backup succeeded but the heartbeat ping failed" >&2
+  fi
 fi
 
 echo "Backup complete"
