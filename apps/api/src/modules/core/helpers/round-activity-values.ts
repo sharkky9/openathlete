@@ -4,15 +4,25 @@
  */
 
 /**
+ * Provider payloads are not always faithful to their schemas. In particular,
+ * Intervals.icu can return the literal string `"NaN"` for calculated fields on
+ * uploaded activities. Treat every non-finite or non-number runtime value as
+ * missing before it reaches Prisma, which rejects NaN/Infinity for Float
+ * columns.
+ */
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+/**
  * Round a value to a specified number of decimal places
  * Returns null/undefined if value is null/undefined
  */
-function round(
-  value: number | null | undefined,
-  decimals: number,
-): number | null | undefined {
+function round(value: unknown, decimals: number): number | null | undefined {
   if (value === null || value === undefined) {
     return value;
+  }
+  if (!isFiniteNumber(value)) {
+    return null;
   }
   const factor = Math.pow(10, decimals);
   return Math.round(value * factor) / factor;
@@ -22,11 +32,8 @@ function round(
  * Round a value to a specified number of decimal places
  * Returns 0 if value is null/undefined (for required fields)
  */
-function roundRequired(
-  value: number | null | undefined,
-  decimals: number,
-): number {
-  if (value === null || value === undefined) {
+function roundRequired(value: unknown, decimals: number) {
+  if (!isFiniteNumber(value)) {
     return 0;
   }
   const factor = Math.pow(10, decimals);
@@ -37,7 +44,7 @@ function roundRequired(
  * Round distance values (meters)
  * 1 decimal place is sufficient for distance precision
  */
-export function roundDistance(value: number | null | undefined): number {
+export function roundDistance(value: unknown): number {
   return roundRequired(value, 1);
 }
 
@@ -45,7 +52,7 @@ export function roundDistance(value: number | null | undefined): number {
  * Round elevation values (meters)
  * 1 decimal place is sufficient for elevation precision
  */
-export function roundElevation(value: number | null | undefined): number {
+export function roundElevation(value: unknown): number {
   return roundRequired(value, 1);
 }
 
@@ -53,9 +60,7 @@ export function roundElevation(value: number | null | undefined): number {
  * Round speed values (m/s)
  * 3 decimal places for speed precision (useful for calculations)
  */
-export function roundSpeed(
-  value: number | null | undefined,
-): number | null | undefined {
+export function roundSpeed(value: unknown): number | null | undefined {
   return round(value, 3);
 }
 
@@ -63,9 +68,7 @@ export function roundSpeed(
  * Round cadence values (rpm)
  * 1 decimal place is sufficient
  */
-export function roundCadence(
-  value: number | null | undefined,
-): number | null | undefined {
+export function roundCadence(value: unknown): number | null | undefined {
   return round(value, 1);
 }
 
@@ -73,9 +76,7 @@ export function roundCadence(
  * Round power values (watts)
  * 1 decimal place is sufficient
  */
-export function roundPower(
-  value: number | null | undefined,
-): number | null | undefined {
+export function roundPower(value: unknown): number | null | undefined {
   return round(value, 1);
 }
 
@@ -83,9 +84,7 @@ export function roundPower(
  * Round heartrate values (bpm)
  * 1 decimal place is sufficient
  */
-export function roundHeartrate(
-  value: number | null | undefined,
-): number | null | undefined {
+export function roundHeartrate(value: unknown): number | null | undefined {
   return round(value, 1);
 }
 
@@ -93,9 +92,7 @@ export function roundHeartrate(
  * Round energy values (kilojoules)
  * 1 decimal place is sufficient
  */
-export function roundEnergy(
-  value: number | null | undefined,
-): number | null | undefined {
+export function roundEnergy(value: unknown): number | null | undefined {
   return round(value, 1);
 }
 

@@ -6,21 +6,9 @@ import { AuthModule } from '../auth';
 import { CoreModule } from '../core';
 import { PrismaService } from '../prisma/services/prisma.service';
 import { QueueModule } from '../queue';
-import { CorosAdapter } from './adapters/coros.adapter';
-import { GarminAdapter } from './adapters/garmin.adapter';
-import { SuuntoAdapter } from './adapters/suunto.adapter';
 import { ProviderOAuthController } from './controllers/provider-oauth.controller';
-import { ProviderExportService } from './export.service';
 import { ProviderImportScheduler } from './provider-import.scheduler';
-import {
-  CorosProviderService,
-  GarminProviderService,
-  IntervalsIcuProviderService,
-  PolarProviderService,
-  StravaProviderService,
-  SuuntoProviderService,
-} from './providers';
-import { ProviderExportScheduler } from './scheduler.service';
+import { IntervalsIcuProviderService } from './providers/intervals-icu.provider.service';
 
 @Module({
   imports: [
@@ -33,27 +21,9 @@ import { ProviderExportScheduler } from './scheduler.service';
   controllers: [ProviderOAuthController],
   providers: [
     PrismaService,
-    GarminAdapter,
-    SuuntoAdapter,
-    CorosAdapter,
-    ProviderExportService,
-    ProviderExportScheduler,
     ProviderImportScheduler,
-    StravaProviderService,
-    GarminProviderService,
-    SuuntoProviderService,
-    CorosProviderService,
-    PolarProviderService,
     IntervalsIcuProviderService,
   ],
-  exports: [
-    ProviderExportService,
-    StravaProviderService,
-    GarminProviderService,
-    SuuntoProviderService,
-    CorosProviderService,
-    PolarProviderService,
-    IntervalsIcuProviderService,
-  ],
+  exports: [IntervalsIcuProviderService],
 })
 export class ProvidersSyncModule {}

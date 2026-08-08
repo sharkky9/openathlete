@@ -49,7 +49,8 @@ export interface IntervalsIcuActivity {
   total_elevation_gain?: number | null;
   total_elevation_loss?: number | null;
 
-  average_speed?: number | null;
+  /** Uploaded files can contain the literal string `"NaN"`. */
+  average_speed?: number | string | null;
   max_speed?: number | null;
   /** Grade-adjusted pace as a speed in m/s. */
   gap?: number | null;
@@ -121,8 +122,9 @@ export interface IntervalsIcuActivity {
 export interface IntervalsIcuStream {
   type: string;
   name?: string | null;
-  data?: (number | null)[] | null;
-  data2?: (number | null)[] | null;
+  /** Some uploaded streams contain the literal string `"NaN"`. */
+  data?: (number | string | null)[] | null;
+  data2?: (number | string | null)[] | null;
   valueType?: string | null;
   valueTypeIsArray?: boolean | null;
   allNull?: boolean | null;

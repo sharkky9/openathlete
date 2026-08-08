@@ -15,14 +15,13 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_SITE_URL || 'https://openathlete.org',
   ),
   title: {
-    default: 'OpenAthlete — AI-assisted endurance coaching platform',
+    default: 'OpenAthlete — Open-source endurance training platform',
     template: '%s | OpenAthlete',
   },
   description:
-    'OpenAthlete is the intelligent coaching platform that helps coaches and athletes plan, analyze and prevent fatigue through AI. Save time, progress with confidence.',
+    'OpenAthlete helps coaches and athletes plan training, review activities, and collaborate with transparent, open-source training tools.',
   keywords: [
     'endurance coaching',
-    'AI coaching',
     'training platform',
     'athlete management',
     'training analysis',
@@ -36,9 +35,9 @@ export const metadata: Metadata = {
     alternateLocale: 'fr_FR',
     url: 'https://openathlete.org',
     siteName: 'OpenAthlete',
-    title: 'OpenAthlete — AI-assisted endurance coaching platform',
+    title: 'OpenAthlete — Open-source endurance training platform',
     description:
-      'OpenAthlete is the intelligent coaching platform that helps coaches and athletes plan, analyze and prevent fatigue through AI.',
+      'OpenAthlete helps coaches and athletes plan training, review activities, and collaborate with transparent, open-source training tools.',
     images: [
       {
         url: '/logo_dark.png',
@@ -50,9 +49,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'OpenAthlete — AI-assisted endurance coaching platform',
+    title: 'OpenAthlete — Open-source endurance training platform',
     description:
-      'OpenAthlete is the intelligent coaching platform that helps coaches and athletes plan, analyze and prevent fatigue through AI.',
+      'OpenAthlete helps coaches and athletes plan training, review activities, and collaborate with transparent, open-source training tools.',
     images: ['/logo_dark.png'],
   },
   robots: {

@@ -55,7 +55,7 @@ OpenAthlete is a different proposition: comparable tracking and analysis in an o
 - 🔒 **You Own Your Data** — Self-hostable, open schema, no lock-in
 - 🔍 **Transparent Algorithms** — Training load formulas (CTL/ATL/TSB) are in the code, auditable, customizable
 - 📊 **Comprehensive Tracking** — Workouts, fitness/fatigue/form metrics, progression visualizations
-- 🔗 **Device Integrations** — Activity import from Strava, Garmin, Suunto, Polar; workout export to Garmin and Suunto
+- 🔗 **Activity Import** — Completed activity history and full streams from Intervals.icu
 - 📱 **Mobile Apps** — Native iOS ([TestFlight](https://testflight.apple.com/join/1hBg4mR1)), Android coming
 - 🌐 **Open Source** — AGPLv3, community-driven, sustainably funded
 

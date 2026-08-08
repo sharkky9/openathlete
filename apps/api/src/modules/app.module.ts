@@ -11,7 +11,6 @@ import {
   ActivityPushNotificationListener,
   NotificationListener,
   TrainingLoadListener,
-  WorkoutSyncListener,
 } from 'src/listeners';
 
 import { AppController } from './app.controller';
@@ -75,7 +74,6 @@ import { SeoPlanModule } from './seo/seo-plan.module';
     ...(process.env.ENABLE_ACTIVITY_PROCESSING === 'true'
       ? [TrainingLoadListener, ActivityPushNotificationListener]
       : []),
-    WorkoutSyncListener,
   ],
 })
 export class AppModule {}

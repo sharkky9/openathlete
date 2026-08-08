@@ -14,7 +14,6 @@ def capacitor_pods
   pod 'CapacitorCommunitySafeArea', :path => '../../../../node_modules/.pnpm/@capacitor-community+safe-area@7.0.0_@capacitor+core@7.4.4/node_modules/@capacitor-community/safe-area'
   pod 'CapacitorFirebaseAuthentication', :path => '../../../../node_modules/.pnpm/@capacitor-firebase+authentication@7.4.0_@capacitor+core@7.4.4_firebase@11.10.0/node_modules/@capacitor-firebase/authentication'
   pod 'CapacitorStatusBar', :path => '../../../../node_modules/.pnpm/@capacitor+status-bar@7.0.4_@capacitor+core@7.4.4/node_modules/@capacitor/status-bar'
-  pod 'CapacitorBrowser', :path => '../../../../node_modules/.pnpm/@capacitor+browser@7.0.2_@capacitor+core@7.4.4/node_modules/@capacitor/browser'
   pod 'CapacitorPushNotifications', :path => '../../../../node_modules/.pnpm/@capacitor+push-notifications@7.0.4_@capacitor+core@7.4.4/node_modules/@capacitor/push-notifications'
 end
 

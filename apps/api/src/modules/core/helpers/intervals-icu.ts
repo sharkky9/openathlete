@@ -96,7 +96,9 @@ export const selectIntervalsIcuStreamTypes = (
   return wanted;
 };
 
-const toNumbers = (data: (number | null)[] | null | undefined): number[] =>
+const toNumbers = (
+  data: (number | string | null)[] | null | undefined,
+): number[] =>
   (data ?? []).map((value) => (typeof value === 'number' ? value : 0));
 
 /**

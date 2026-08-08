@@ -1,8 +1,16 @@
+import { MODULE_METADATA } from '@nestjs/common/constants';
+
 import { ConnectorProvider, ProviderAccount } from '@openathlete/database';
 
 import { PrismaService } from '../prisma/services/prisma.service';
 import { ProviderImportScheduler } from './provider-import.scheduler';
+import { ProvidersSyncModule } from './providers-sync.module';
 import { IntervalsIcuProviderService } from './providers/intervals-icu.provider.service';
+
+jest.mock('@garmin/fitsdk', () => ({
+  Decoder: class Decoder {},
+  Stream: class Stream {},
+}));
 
 const account = (overrides: Partial<ProviderAccount> = {}): ProviderAccount =>
   ({
@@ -17,6 +25,19 @@ const account = (overrides: Partial<ProviderAccount> = {}): ProviderAccount =>
   }) as ProviderAccount;
 
 describe('ProviderImportScheduler', () => {
+  it('registers only the Intervals.icu provider runtime', () => {
+    const registeredProviders = Reflect.getMetadata(
+      MODULE_METADATA.PROVIDERS,
+      ProvidersSyncModule,
+    );
+
+    expect(registeredProviders).toEqual([
+      PrismaService,
+      ProviderImportScheduler,
+      IntervalsIcuProviderService,
+    ]);
+  });
+
   function setup(accounts: ProviderAccount[]) {
     const prisma = {
       providerAccount: {

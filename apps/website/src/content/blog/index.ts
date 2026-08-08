@@ -1,7 +1,6 @@
 import { articleCoachAthleteCommunication } from './article-coach-athlete-communication';
 import { articleDigitalizingClubs } from './article-digitalizing-clubs';
 import { articleOpenathleteOpensourceBenefits } from './article-openathlete-opensource-benefits';
-import { articleSyncWorkouts } from './article-sync-workouts';
 import { articleTrimp } from './article-trimp';
 import { articleYouthTalentDetection } from './article-youth-talent-detection';
 import type { BlogPost } from './types';
@@ -12,7 +11,6 @@ export const blogPosts: BlogPost[] = [
   articleDigitalizingClubs,
   articleYouthTalentDetection,
   articleOpenathleteOpensourceBenefits,
-  articleSyncWorkouts,
   articleTrimp,
 ];
 

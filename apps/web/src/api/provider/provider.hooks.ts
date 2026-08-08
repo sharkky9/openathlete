@@ -11,38 +11,6 @@ import { ConnectorProvider, ProviderPreferencesDto } from '@openathlete/shared';
 import { ConnectedProvider, ProviderAPI } from './provider.api';
 import { providerKeys } from './provider.keys';
 
-export const useGetOAuthUriMutation = (
-  opt?: MutationOptions<
-    Awaited<ReturnType<typeof ProviderAPI.getOAuthUri>>,
-    Error,
-    Parameters<typeof ProviderAPI.getOAuthUri>[0]
-  >,
-) => {
-  return useMutation({
-    ...opt,
-    mutationFn: ProviderAPI.getOAuthUri,
-  });
-};
-
-export const useSetOAuthTokenMutation = (
-  opt?: MutationOptions<
-    Awaited<ReturnType<typeof ProviderAPI.setOAuthToken>>,
-    Error,
-    Parameters<typeof ProviderAPI.setOAuthToken>[0]
-  >,
-) => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    ...opt,
-    mutationFn: ProviderAPI.setOAuthToken,
-    onSuccess: (data, variables, onMutateResult, context) => {
-      if (opt?.onSuccess)
-        opt.onSuccess(data, variables, onMutateResult, context);
-      queryClient.invalidateQueries({ queryKey: [providerKeys.getConnected] });
-    },
-  });
-};
-
 export const useSetProviderCredentialsMutation = (
   opt?: MutationOptions<
     Awaited<ReturnType<typeof ProviderAPI.setCredentials>>,

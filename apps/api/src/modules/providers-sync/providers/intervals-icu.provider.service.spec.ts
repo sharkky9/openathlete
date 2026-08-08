@@ -357,6 +357,7 @@ interface FakeEventActivity {
   eventActivityId: number;
   eventId: number;
   externalId: string;
+  averageSpeed: number | null | undefined;
   maxWatts: number | null;
 }
 
@@ -473,6 +474,7 @@ function importSetup(options: {
       }: {
         data: {
           externalId: string;
+          averageSpeed: number | null | undefined;
           maxWatts: number | null;
           event: { connect: { eventId: number } };
         };
@@ -481,6 +483,7 @@ function importSetup(options: {
           eventActivityId: ++nextActivityId,
           eventId: data.event.connect.eventId,
           externalId: data.externalId,
+          averageSpeed: data.averageSpeed,
           maxWatts: data.maxWatts,
         };
         activities.push(activity);
@@ -855,6 +858,22 @@ describe('IntervalsIcuProviderService.importActivity', () => {
 
     expect(RIDE).not.toHaveProperty('max_watts');
     expect(activities[0].maxWatts).toBe(210);
+  });
+
+  it('treats provider string NaN values as missing instead of sending NaN to Prisma', async () => {
+    const { service, activities } = importSetup({
+      streamReplies: [WATTS_STREAM],
+    });
+    const importedWithInvalidSpeed = {
+      ...IMPORTED,
+      raw: { ...RIDE, average_speed: 'NaN' },
+    } as unknown as Parameters<
+      IntervalsIcuProviderService['importActivity']
+    >[1];
+
+    await service.importActivity(ACCOUNT, importedWithInvalidSpeed);
+
+    expect(activities[0].averageSpeed).toBe(0);
   });
 
   // A stream that could not be fetched is a failed import, not an import with
